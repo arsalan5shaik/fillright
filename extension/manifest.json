@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "FillRight",
+  "version": "0.1.0",
+  "description": "AI-assisted Workday job application autofill",
+  "action": {
+    "default_popup": "src/popup/index.html"
+  },
+  "background": {
+    "service_worker": "src/background/index.ts",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://localhost:3000/*", "http://localhost:3001/*"],
+      "js": ["src/content/website-bridge.ts"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": ["storage"]
+}
