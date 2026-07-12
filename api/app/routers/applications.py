@@ -3,9 +3,18 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.auth import CurrentUser, get_current_user
 from app.db.postgrest import user_scoped_client
-from app.schemas.applications import AnalyzeJDRequest, ApplicationOut
+from app.db.storage import create_signed_url, upload_object
+from app.schemas.applications import (
+    AnalyzeJDRequest,
+    ApplicationOut,
+    TailorResumeRequest,
+    TailorResumeResponse,
+)
 from app.schemas.jd_analysis import JDAnalysis
+from app.schemas.resume import ParsedResume
 from app.services.llm.client import call_structured
+from app.services.pdf_render import render_resume_pdf
+from app.services.resume_tailor import tailor_resume
 
 router = APIRouter(prefix="/applications", tags=["applications"])
 
@@ -95,4 +104,62 @@ def analyze_jd(body: AnalyzeJDRequest, user: CurrentUser = Depends(get_current_u
         job_url=row["job_url"],
         jd_analysis=analysis,
         is_duplicate=False,
+    )
+
+
+@router.post("/{application_id}/tailor-resume", response_model=TailorResumeResponse)
+def tailor_resume_endpoint(
+    application_id: str,
+    body: TailorResumeRequest,
+    user: CurrentUser = Depends(get_current_user),
+) -> TailorResumeResponse:
+    with user_scoped_client(user.access_token) as client:
+        app_resp = client.get(
+            "/applications",
+            params={"select": "id,resume_profile_id,jd_analysis_json", "id": f"eq.{application_id}"},
+        )
+        app_resp.raise_for_status()
+        app_rows = app_resp.json()
+        if not app_rows:
+            raise HTTPException(status_code=404, detail="Application not found")
+        app_row = app_rows[0]
+
+        resume_profile_id = body.resume_profile_id or app_row["resume_profile_id"]
+        if not resume_profile_id:
+            raise HTTPException(
+                status_code=400, detail="No resume_profile_id provided or set on the application"
+            )
+
+        resume_resp = client.get(
+            "/resume_profiles",
+            params={"select": "id,parsed_json", "id": f"eq.{resume_profile_id}"},
+        )
+        resume_resp.raise_for_status()
+        resume_rows = resume_resp.json()
+        if not resume_rows:
+            raise HTTPException(status_code=404, detail="Resume profile not found")
+
+        source = ParsedResume(**resume_rows[0]["parsed_json"])
+        jd_analysis = JDAnalysis(**app_row["jd_analysis_json"])
+
+        tailored = tailor_resume(source, jd_analysis, user_id=user.id)
+        pdf_bytes = render_resume_pdf(tailored)
+
+        storage_path = f"{user.id}/{application_id}.pdf"
+        upload_object(user.access_token, "resumes", storage_path, pdf_bytes, "application/pdf")
+        download_url = create_signed_url(user.access_token, "resumes", storage_path)
+
+        update_resp = client.patch(
+            "/applications",
+            params={"id": f"eq.{application_id}"},
+            headers={"Prefer": "return=representation"},
+            json={"resume_profile_id": resume_profile_id, "tailored_resume_url": storage_path},
+        )
+        if update_resp.status_code >= 400:
+            raise HTTPException(
+                status_code=502, detail=f"Failed to update application: {update_resp.text}"
+            )
+
+    return TailorResumeResponse(
+        application_id=application_id, tailored_resume=tailored, download_url=download_url
     )

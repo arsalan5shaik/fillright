@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 
 from app.schemas.jd_analysis import JDAnalysis
+from app.schemas.tailored_resume import TailoredResume
 
 
 class AnalyzeJDRequest(BaseModel):
@@ -20,3 +21,13 @@ class ApplicationOut(BaseModel):
     job_url: str | None
     jd_analysis: JDAnalysis
     is_duplicate: bool
+
+
+class TailorResumeRequest(BaseModel):
+    resume_profile_id: str | None = None
+
+
+class TailorResumeResponse(BaseModel):
+    application_id: str
+    tailored_resume: TailoredResume
+    download_url: str
