@@ -11,6 +11,7 @@ _bearer = HTTPBearer(auto_error=False)
 class CurrentUser(BaseModel):
     id: str
     email: str | None = None
+    access_token: str
 
 
 def get_current_user(
@@ -43,4 +44,4 @@ def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
 
     data = response.json()
-    return CurrentUser(id=data["id"], email=data.get("email"))
+    return CurrentUser(id=data["id"], email=data.get("email"), access_token=credentials.credentials)

@@ -1,8 +1,10 @@
 from fastapi import Depends, FastAPI
 
 from app.core.auth import CurrentUser, get_current_user
+from app.routers import resumes
 
 app = FastAPI(title="FillRight API")
+app.include_router(resumes.router)
 
 
 @app.get("/health")
