@@ -1,5 +1,6 @@
 import os
 import sys
+from datetime import date as date_cls
 from pathlib import Path
 
 if sys.platform == "win32":
@@ -17,6 +18,7 @@ if sys.platform == "win32":
 import weasyprint  # noqa: E402
 from jinja2 import Environment, FileSystemLoader, select_autoescape  # noqa: E402
 
+from app.schemas.resume import ContactInfo  # noqa: E402
 from app.schemas.tailored_resume import TailoredResume  # noqa: E402
 
 _TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates"
@@ -26,4 +28,11 @@ _env = Environment(loader=FileSystemLoader(_TEMPLATES_DIR), autoescape=select_au
 def render_resume_pdf(resume: TailoredResume) -> bytes:
     template = _env.get_template("resume.html")
     html = template.render(resume=resume)
+    return weasyprint.HTML(string=html).write_pdf()
+
+
+def render_cover_letter_pdf(text: str, contact: ContactInfo) -> bytes:
+    template = _env.get_template("cover_letter.html")
+    paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+    html = template.render(contact=contact, date=date_cls.today().strftime("%B %d, %Y"), paragraphs=paragraphs)
     return weasyprint.HTML(string=html).write_pdf()

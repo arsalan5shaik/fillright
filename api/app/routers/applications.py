@@ -7,13 +7,16 @@ from app.db.storage import create_signed_url, upload_object
 from app.schemas.applications import (
     AnalyzeJDRequest,
     ApplicationOut,
+    CoverLetterRequest,
+    CoverLetterResponse,
     TailorResumeRequest,
     TailorResumeResponse,
 )
 from app.schemas.jd_analysis import JDAnalysis
 from app.schemas.resume import ParsedResume
+from app.services.cover_letter import generate_cover_letter
 from app.services.llm.client import call_structured
-from app.services.pdf_render import render_resume_pdf
+from app.services.pdf_render import render_cover_letter_pdf, render_resume_pdf
 from app.services.resume_tailor import tailor_resume
 
 router = APIRouter(prefix="/applications", tags=["applications"])
@@ -107,6 +110,45 @@ def analyze_jd(body: AnalyzeJDRequest, user: CurrentUser = Depends(get_current_u
     )
 
 
+def _load_application_and_resume(
+    client: httpx.Client,
+    application_id: str,
+    resume_profile_id_override: str | None,
+    *,
+    extra_app_fields: str = "",
+) -> tuple[dict, ParsedResume, str]:
+    """Shared by tailor-resume and cover-letter: fetch the application row,
+    resolve which resume profile to use (request override, else the one set
+    on the application), and fetch that resume's parsed_json."""
+    app_resp = client.get(
+        "/applications",
+        params={
+            "select": f"id,resume_profile_id,jd_analysis_json{extra_app_fields}",
+            "id": f"eq.{application_id}",
+        },
+    )
+    app_resp.raise_for_status()
+    app_rows = app_resp.json()
+    if not app_rows:
+        raise HTTPException(status_code=404, detail="Application not found")
+    app_row = app_rows[0]
+
+    resume_profile_id = resume_profile_id_override or app_row["resume_profile_id"]
+    if not resume_profile_id:
+        raise HTTPException(status_code=400, detail="No resume_profile_id provided or set on the application")
+
+    resume_resp = client.get(
+        "/resume_profiles",
+        params={"select": "id,parsed_json", "id": f"eq.{resume_profile_id}"},
+    )
+    resume_resp.raise_for_status()
+    resume_rows = resume_resp.json()
+    if not resume_rows:
+        raise HTTPException(status_code=404, detail="Resume profile not found")
+
+    return app_row, ParsedResume(**resume_rows[0]["parsed_json"]), resume_profile_id
+
+
 @router.post("/{application_id}/tailor-resume", response_model=TailorResumeResponse)
 def tailor_resume_endpoint(
     application_id: str,
@@ -114,32 +156,9 @@ def tailor_resume_endpoint(
     user: CurrentUser = Depends(get_current_user),
 ) -> TailorResumeResponse:
     with user_scoped_client(user.access_token) as client:
-        app_resp = client.get(
-            "/applications",
-            params={"select": "id,resume_profile_id,jd_analysis_json", "id": f"eq.{application_id}"},
+        app_row, source, resume_profile_id = _load_application_and_resume(
+            client, application_id, body.resume_profile_id
         )
-        app_resp.raise_for_status()
-        app_rows = app_resp.json()
-        if not app_rows:
-            raise HTTPException(status_code=404, detail="Application not found")
-        app_row = app_rows[0]
-
-        resume_profile_id = body.resume_profile_id or app_row["resume_profile_id"]
-        if not resume_profile_id:
-            raise HTTPException(
-                status_code=400, detail="No resume_profile_id provided or set on the application"
-            )
-
-        resume_resp = client.get(
-            "/resume_profiles",
-            params={"select": "id,parsed_json", "id": f"eq.{resume_profile_id}"},
-        )
-        resume_resp.raise_for_status()
-        resume_rows = resume_resp.json()
-        if not resume_rows:
-            raise HTTPException(status_code=404, detail="Resume profile not found")
-
-        source = ParsedResume(**resume_rows[0]["parsed_json"])
         jd_analysis = JDAnalysis(**app_row["jd_analysis_json"])
 
         tailored = tailor_resume(source, jd_analysis, user_id=user.id)
@@ -162,4 +181,39 @@ def tailor_resume_endpoint(
 
     return TailorResumeResponse(
         application_id=application_id, tailored_resume=tailored, download_url=download_url
+    )
+
+
+@router.post("/{application_id}/cover-letter", response_model=CoverLetterResponse)
+def cover_letter_endpoint(
+    application_id: str,
+    body: CoverLetterRequest,
+    user: CurrentUser = Depends(get_current_user),
+) -> CoverLetterResponse:
+    with user_scoped_client(user.access_token) as client:
+        app_row, source, _ = _load_application_and_resume(
+            client, application_id, body.resume_profile_id, extra_app_fields=",company,job_title"
+        )
+        jd_analysis = JDAnalysis(**app_row["jd_analysis_json"])
+
+        letter_text = generate_cover_letter(
+            source, jd_analysis, company=app_row["company"], job_title=app_row["job_title"], user_id=user.id
+        )
+        pdf_bytes = render_cover_letter_pdf(letter_text, source.contact)
+
+        storage_path = f"{user.id}/{application_id}-cover-letter.pdf"
+        upload_object(user.access_token, "resumes", storage_path, pdf_bytes, "application/pdf")
+        download_url = create_signed_url(user.access_token, "resumes", storage_path)
+
+        update_resp = client.patch(
+            "/applications",
+            params={"id": f"eq.{application_id}"},
+            headers={"Prefer": "return=representation"},
+            json={"cover_letter_text": letter_text, "cover_letter_url": storage_path},
+        )
+        if update_resp.status_code >= 400:
+            raise HTTPException(status_code=502, detail=f"Failed to update application: {update_resp.text}")
+
+    return CoverLetterResponse(
+        application_id=application_id, cover_letter_text=letter_text, download_url=download_url
     )

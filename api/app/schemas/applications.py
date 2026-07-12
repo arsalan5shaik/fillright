@@ -31,3 +31,13 @@ class TailorResumeResponse(BaseModel):
     application_id: str
     tailored_resume: TailoredResume
     download_url: str
+
+
+class CoverLetterRequest(BaseModel):
+    resume_profile_id: str | None = None
+
+
+class CoverLetterResponse(BaseModel):
+    application_id: str
+    cover_letter_text: str
+    download_url: str
