@@ -20,6 +20,12 @@ export default async function HomePage() {
       <p>
         <Link href="/resume">Your resumes</Link>
       </p>
+      <p>
+        <Link href="/common-questions">Common questions</Link>
+      </p>
+      <p>
+        <Link href="/profile">Profile</Link>
+      </p>
       <SignOutButton />
     </main>
   );

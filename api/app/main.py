@@ -2,7 +2,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.auth import CurrentUser, get_current_user
-from app.routers import resumes
+from app.routers import answers, resumes
 
 app = FastAPI(title="FillRight API")
 app.add_middleware(
@@ -20,6 +20,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(resumes.router)
+app.include_router(answers.router)
 
 
 @app.get("/health")

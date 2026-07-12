@@ -39,3 +39,18 @@ export interface ResumeProfileSummary {
   is_default: boolean;
   updated_at: string;
 }
+
+export interface CommonQuestion {
+  id: string;
+  question_text: string;
+  category: string;
+  is_sensitive: boolean;
+  input_type: "boolean" | "select" | "text" | "number";
+  answer_options: string[] | null;
+}
+
+export interface CommonAnswer {
+  common_question_id: string;
+  answer_value: string;
+  is_encrypted: boolean;
+}
