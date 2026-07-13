@@ -1,6 +1,6 @@
 import type { ScanProgressMessage } from "../../lib/types";
 import { looksLikeApplicationForm, runApplicationFormFill } from "./applicationForm";
-import { findApplyButton } from "./applyButton";
+import { findApplyButton, findApplyManuallyButton } from "./applyButton";
 import { detectJobPosting } from "./detect";
 import { showProgress, showStartButton, showStatus } from "./statusUi";
 
@@ -14,9 +14,9 @@ if (posting) {
   });
 
   // Scanning (JD analysis, resume tailoring, cover letter) starts as soon as
-  // a job posting is detected - no click needed. The Start button is a
-  // separate action: it drives Workday's own Apply button, which navigates
-  // into the application flow that the extension then autofills on its own.
+  // a job posting is detected - no click needed. It keeps running in the
+  // background regardless of what step of the application the user reaches
+  // next; the wizard fill pass below never waits on it either.
   showProgress("Scanning job posting...", 5);
   chrome.runtime.sendMessage({ type: "SCAN_JOB_POSTING", posting }, () => {
     if (chrome.runtime.lastError) {
@@ -32,6 +32,45 @@ if (posting) {
       showStatus("Couldn't find the Apply button automatically - click Apply yourself to continue.");
     }
   });
-} else if (looksLikeApplicationForm()) {
+}
+
+/** Workday's whole application flow - the "Start Your Application" modal
+ * (if the tenant shows one) and every wizard step after it - is client-side
+ * routed and never triggers a fresh page load. This content script is only
+ * ever injected once (on the job-posting page, or directly on a wizard page
+ * if the user landed here straight), so it has to keep re-checking the DOM
+ * itself on every render instead of relying on being re-injected per step. */
+let modalHandled = false;
+let lastFillSignature: string | null = null;
+
+function currentStepSignature(): string {
+  const heading = document.querySelector("h1, h2")?.textContent?.trim() ?? "";
+  return `${window.location.href}::${heading}`;
+}
+
+function evaluateApplicationFlow(): void {
+  if (!modalHandled) {
+    const applyManually = findApplyManuallyButton();
+    if (applyManually) {
+      modalHandled = true;
+      applyManually.click();
+      return;
+    }
+  }
+
+  if (!looksLikeApplicationForm()) return;
+
+  const signature = currentStepSignature();
+  if (signature === lastFillSignature) return;
+  lastFillSignature = signature;
   void runApplicationFormFill();
 }
+
+let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+function scheduleEvaluate(): void {
+  if (debounceTimer) clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(evaluateApplicationFlow, 250);
+}
+
+evaluateApplicationFlow();
+new MutationObserver(scheduleEvaluate).observe(document.body, { childList: true, subtree: true });

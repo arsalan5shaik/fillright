@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { findApplyButton } from "./applyButton";
+import { findApplyButton, findApplyManuallyButton } from "./applyButton";
 
 function markVisible(): void {
   for (const el of document.querySelectorAll("button, a")) {
@@ -49,5 +49,28 @@ describe("findApplyButton", () => {
     document.body.innerHTML = `<button id="apply">Apply</button>`;
     // deliberately not calling markVisible() - offsetParent stays null in jsdom
     expect(findApplyButton()).toBeNull();
+  });
+});
+
+describe("findApplyManuallyButton", () => {
+  it("finds the 'Apply Manually' option in Workday's Start Your Application modal", () => {
+    document.body.innerHTML = `
+      <button id="autofill">Autofill with Resume</button>
+      <button id="manual">Apply Manually</button>
+      <button id="last">Use My Last Application</button>
+    `;
+    markVisible();
+    expect(findApplyManuallyButton()?.id).toBe("manual");
+  });
+
+  it("returns null when the modal isn't showing", () => {
+    document.body.innerHTML = `<button id="apply">Apply</button>`;
+    markVisible();
+    expect(findApplyManuallyButton()).toBeNull();
+  });
+
+  it("ignores a hidden 'Apply Manually' option", () => {
+    document.body.innerHTML = `<button id="manual">Apply Manually</button>`;
+    expect(findApplyManuallyButton()).toBeNull();
   });
 });
