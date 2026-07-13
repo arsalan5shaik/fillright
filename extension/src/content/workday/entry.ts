@@ -6,6 +6,14 @@ import { getAssociatedLabelText } from "./formUtils";
 import { showProgress, showStartButton, showStatus } from "./statusUi";
 
 const posting = detectJobPosting();
+// Gates evaluateApplicationFlow below: a real job-posting page commonly has
+// its own unrelated form fields (a search box, a "sign up for job alerts"
+// email input, a location filter) that can add up to 3+ and satisfy
+// looksLikeApplicationForm() well before the user ever clicks Apply -
+// without this gate, that was enough to trigger the wizard fill pass on
+// the posting page itself. Starts true only when there's no detected
+// posting to gate on (landed directly on a wizard page).
+let started = !posting;
 
 if (posting) {
   chrome.runtime.onMessage.addListener((message: ScanProgressMessage) => {
@@ -26,6 +34,7 @@ if (posting) {
   });
 
   showStartButton(() => {
+    started = true;
     const applyButton = findApplyButton();
     if (applyButton) {
       applyButton.click();
@@ -58,6 +67,8 @@ function currentStepSignature(): string {
 }
 
 function evaluateApplicationFlow(): void {
+  if (!started) return;
+
   if (!modalHandled) {
     const applyManually = findApplyManuallyButton();
     if (applyManually) {

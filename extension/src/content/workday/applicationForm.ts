@@ -2,7 +2,7 @@ import type { AutofillData, TailoredResumeFilePayload } from "../../lib/types";
 import { checkAccountCreationConsent, hasAccountCreationStep } from "./accountCredentials";
 import { answerConflictOfInterestQuestions } from "./booleanScreeningQuestions";
 import { findCoverLetterFileInput, findResumeFileInput, injectFile } from "./fileAttach";
-import { runComboboxFillPass, runFillPass } from "./fillEngine";
+import { runComboboxFillPass, runFillPass, type ValueProvider } from "./fillEngine";
 import { answerFirstOptionQuestions } from "./firstOptionQuestions";
 import { runQaPass } from "./qaPass";
 import { fillEducationSection, fillWebsitesSection, fillWorkExperienceSection, type WebsiteEntry } from "./repeatableSections";
@@ -101,7 +101,18 @@ export async function runApplicationFormFill(): Promise<void> {
     fillWebsitesSection(websiteEntries),
   ]);
 
-  const getValue = buildValueProvider(autofillResponse.data);
+  // On the account-creation step, the generic "email" concept (sourced from
+  // the resume's contact info for the My Information step) would otherwise
+  // still fill this page's email field via the ordinary fill pass, even
+  // though the account-creation email/password are meant to be typed by
+  // hand - a step with a password field is never the My Information step,
+  // so suppressing "email" here can't affect the real contact-email field.
+  const rawGetValue = buildValueProvider(autofillResponse.data);
+  const onAccountCreationStep = hasAccountCreationStep();
+  const getValue: ValueProvider = onAccountCreationStep
+    ? (concept) => (concept === "email" ? null : rawGetValue(concept))
+    : rawGetValue;
+
   const result = runFillPass(getValue);
   const comboboxResult = await runComboboxFillPass(getValue);
   const conflictOfInterestAnswered = answerConflictOfInterestQuestions();
