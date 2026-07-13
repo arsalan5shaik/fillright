@@ -1,11 +1,13 @@
 import type {
   AnalyzeApplicationResult,
   AutofillData,
+  EducationEntry,
   JdLocation,
   ResolvedAnswer,
   ResumeContact,
   ScannedJobPosting,
   WorkdayCredentials,
+  WorkExperienceEntry,
 } from "./types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL as string;
@@ -110,6 +112,21 @@ async function getDefaultResumeContact(accessToken: string): Promise<ResumeConta
   return rows[0]?.parsed_json?.contact ?? null;
 }
 
+interface ParsedResumeExperience {
+  work_experience?: WorkExperienceEntry[];
+  education?: EducationEntry[];
+}
+
+async function getDefaultResumeExperience(accessToken: string): Promise<ParsedResumeExperience> {
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/resume_profiles?select=parsed_json&order=is_default.desc,updated_at.desc&limit=1`,
+    { headers: restHeaders(accessToken) },
+  );
+  if (!res.ok) throw new Error(`resume_profiles lookup failed: ${res.status} ${await res.text()}`);
+  const rows = (await res.json()) as { parsed_json: ParsedResumeExperience }[];
+  return rows[0]?.parsed_json ?? {};
+}
+
 /** Correlates common_questions (global, public read - id -> category) with
  * the caller's saved answers (via FastAPI, which decrypts sensitive ones)
  * to build a category -> answer_value map the fill engine can key off of. */
@@ -138,18 +155,19 @@ interface JdAnalysisKeyword {
   required: boolean;
 }
 
-async function getMostRecentJdAnalysis(
-  accessToken: string,
-): Promise<{ locations?: JdLocation[]; keywords?: JdAnalysisKeyword[] } | null> {
+interface MostRecentApplication {
+  jd_analysis_json?: { locations?: JdLocation[]; keywords?: JdAnalysisKeyword[] };
+  tailored_resume_json?: ParsedResumeExperience;
+}
+
+async function getMostRecentApplication(accessToken: string): Promise<MostRecentApplication | null> {
   const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/applications?select=jd_analysis_json&order=created_at.desc&limit=1`,
+    `${SUPABASE_URL}/rest/v1/applications?select=jd_analysis_json,tailored_resume_json&order=created_at.desc&limit=1`,
     { headers: restHeaders(accessToken) },
   );
   if (!res.ok) throw new Error(`applications lookup failed: ${res.status} ${await res.text()}`);
-  const rows = (await res.json()) as {
-    jd_analysis_json?: { locations?: JdLocation[]; keywords?: JdAnalysisKeyword[] };
-  }[];
-  return rows[0]?.jd_analysis_json ?? null;
+  const rows = (await res.json()) as MostRecentApplication[];
+  return rows[0] ?? null;
 }
 
 /** Aggregates everything the fill engine needs into one bundle. Called from
@@ -158,13 +176,15 @@ async function getMostRecentJdAnalysis(
  * GET_AUTOFILL_DATA message - the content script itself only touches the
  * DOM, never the network. */
 export async function getAutofillData(accessToken: string): Promise<AutofillData> {
-  const [profileFields, contact, commonAnswers, jdAnalysis] = await Promise.all([
+  const [profileFields, contact, commonAnswers, application, baseResumeExperience] = await Promise.all([
     getProfileFields(accessToken),
     getDefaultResumeContact(accessToken),
     getCommonAnswersByCategory(accessToken),
-    getMostRecentJdAnalysis(accessToken),
+    getMostRecentApplication(accessToken),
+    getDefaultResumeExperience(accessToken),
   ]);
 
+  const jdAnalysis = application?.jd_analysis_json;
   const jdLocation = jdAnalysis?.locations?.[0] ?? null;
   // keyword_extraction's prompt already asks specifically for skill/
   // technology terms (see jd_analyzer.py), so these need no further
@@ -173,7 +193,15 @@ export async function getAutofillData(accessToken: string): Promise<AutofillData
     .sort((a, b) => Number(b.required) - Number(a.required))
     .map((k) => k.term);
 
-  return { profileFields, contact, commonAnswers, jdLocation, jdKeywords };
+  // Prefers the tailored resume (rewritten bullets for this specific job)
+  // over the base resume, so Workday's own experience fields match the
+  // tailored PDF - falls back to the base resume if tailoring hasn't run
+  // yet for this application.
+  const experienceSource = application?.tailored_resume_json ?? baseResumeExperience;
+  const workExperience = experienceSource.work_experience ?? [];
+  const education = experienceSource.education ?? [];
+
+  return { profileFields, contact, commonAnswers, jdLocation, jdKeywords, workExperience, education };
 }
 
 export async function resolveQuestion(accessToken: string, questionText: string): Promise<ResolvedAnswer> {

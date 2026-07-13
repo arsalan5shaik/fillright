@@ -44,12 +44,36 @@ export interface JdLocation {
   country: string | null;
 }
 
+export interface WorkExperienceEntry {
+  company: string;
+  title: string;
+  start_date: string | null;
+  end_date: string | null;
+  location: string | null;
+  bullets: string[];
+}
+
+export interface EducationEntry {
+  institution: string;
+  degree: string | null;
+  field_of_study: string | null;
+  start_date: string | null;
+  end_date: string | null;
+}
+
 export interface AutofillData {
   profileFields: Record<string, string>;
   contact: ResumeContact | null;
   commonAnswers: Record<string, string>;
   jdLocation: JdLocation | null;
   jdKeywords: string[];
+  // Prefers the tailored resume's work_experience/education (rewritten
+  // bullets to match this specific job) over the base resume's, so
+  // Workday's own experience fields show the same content as the tailored
+  // PDF - falls back to the base resume when no tailored version exists
+  // yet for the current application.
+  workExperience: WorkExperienceEntry[];
+  education: EducationEntry[];
 }
 
 export type GetAutofillDataMessage = { type: "GET_AUTOFILL_DATA" };

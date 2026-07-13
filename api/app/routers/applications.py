@@ -172,7 +172,11 @@ def tailor_resume_endpoint(
             "/applications",
             params={"id": f"eq.{application_id}"},
             headers={"Prefer": "return=representation"},
-            json={"resume_profile_id": resume_profile_id, "tailored_resume_url": storage_path},
+            json={
+                "resume_profile_id": resume_profile_id,
+                "tailored_resume_url": storage_path,
+                "tailored_resume_json": tailored.model_dump(),
+            },
         )
         if update_resp.status_code >= 400:
             raise HTTPException(
