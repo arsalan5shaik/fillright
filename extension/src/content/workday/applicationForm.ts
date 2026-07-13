@@ -95,11 +95,12 @@ export async function runApplicationFormFill(): Promise<void> {
     ] as { label: string; url: string | undefined }[]
   ).filter((entry): entry is WebsiteEntry => Boolean(entry.url));
 
-  const [workExperienceFilled, educationFilled, websitesFilled] = await Promise.all([
-    fillWorkExperienceSection(autofillResponse.data.workExperience),
-    fillEducationSection(autofillResponse.data.education),
-    fillWebsitesSection(websiteEntries),
-  ]);
+  // Sequential, not Promise.all - each of these clicks a button and waits
+  // out a re-render on the same page; running them concurrently risked one
+  // section's re-render interfering with another's in-flight DOM lookups.
+  const workExperienceFilled = await fillWorkExperienceSection(autofillResponse.data.workExperience);
+  const educationFilled = await fillEducationSection(autofillResponse.data.education);
+  const websitesFilled = await fillWebsitesSection(websiteEntries);
 
   // On the account-creation step, the generic "email" concept (sourced from
   // the resume's contact info for the My Information step) would otherwise

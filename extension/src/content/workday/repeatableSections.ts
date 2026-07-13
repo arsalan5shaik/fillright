@@ -77,8 +77,16 @@ async function addEntriesAndFill<T>(
   entries: T[],
   fillEntry: (panel: HTMLElement, entry: T) => void,
 ): Promise<number> {
-  const container = findSectionContainer(titlePattern);
-  if (!container || entries.length === 0) return 0;
+  if (entries.length === 0) return 0;
+
+  // Waits for the section to actually appear rather than checking once -
+  // confirmed live that a step's sections can still be rendering when this
+  // runs (the step's own heading and layout render first, Work
+  // Experience/Education/etc. arrive slightly later), and a single
+  // synchronous check at the wrong moment silently found nothing and gave
+  // up without ever clicking Add.
+  const container = await waitFor(() => findSectionContainer(titlePattern), 2000);
+  if (!container) return 0;
 
   let filled = 0;
   for (let i = 0; i < entries.length; i++) {
