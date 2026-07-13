@@ -18,7 +18,7 @@
     },
     {
       "matches": ["*://*.myworkdayjobs.com/*"],
-      "js": ["src/content/workday/index.ts"],
+      "js": ["src/content/workday/entry.ts"],
       "run_at": "document_idle"
     }
   ],
