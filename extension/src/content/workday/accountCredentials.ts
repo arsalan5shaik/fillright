@@ -1,5 +1,37 @@
-import { getAssociatedLabelText, isVisible, setFieldValue } from "./formUtils";
+import { getAssociatedLabelText, isVisible } from "./formUtils";
 import { markField } from "./confidenceUi";
+
+const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+
+/** Workday's account-creation step has a live "Password Requirements"
+ * checklist (uppercase/lowercase/number/special-char/length), which is a
+ * strong sign its validation re-runs per keystroke rather than just on
+ * blur - and the Create Account button stays unresponsive if that
+ * validation state never gets set, even though the field visibly shows the
+ * right value (confirmed live: filled via the normal one-shot
+ * value+input+change+blur dispatch, the button wouldn't respond to clicks,
+ * but reloading and typing the exact same value by hand worked fine).
+ * Dispatching one keydown/input/keyup per character - not just once for
+ * the whole value - is the more realistic simulation most such validators
+ * expect. Scoped to this account-creation flow only, not the shared
+ * setFieldValue used by every other already-working field. */
+function simulateTyping(el: HTMLInputElement, value: string): void {
+  el.focus();
+  let current = "";
+  for (const char of value) {
+    current += char;
+    el.dispatchEvent(new KeyboardEvent("keydown", { key: char, bubbles: true }));
+    if (nativeInputValueSetter) {
+      nativeInputValueSetter.call(el, current);
+    } else {
+      el.value = current;
+    }
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new KeyboardEvent("keyup", { key: char, bubbles: true }));
+  }
+  el.dispatchEvent(new Event("change", { bubbles: true }));
+  el.dispatchEvent(new Event("blur", { bubbles: true }));
+}
 
 /** Best-effort heuristic, unverified against a live Workday account-creation
  * page (see Milestone 13/16 notes on the lack of real wizard HTML): a
@@ -61,7 +93,7 @@ export function fillAccountCreationFields(email: string, password: string): bool
   let filled = false;
 
   if (initial.emailInput) {
-    setFieldValue(initial.emailInput, email);
+    simulateTyping(initial.emailInput, email);
     markField(initial.emailInput, "high");
     filled = true;
   }
@@ -69,7 +101,7 @@ export function fillAccountCreationFields(email: string, password: string): bool
   for (let guard = 0; guard < 5; guard++) {
     const remaining = findEmptyPasswordInputs();
     if (remaining.length === 0) break;
-    setFieldValue(remaining[0], password);
+    simulateTyping(remaining[0], password);
     markField(remaining[0], "high");
     filled = true;
   }
