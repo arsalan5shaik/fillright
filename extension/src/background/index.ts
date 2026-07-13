@@ -4,12 +4,19 @@ import {
   generateCoverLetter,
   getAutofillData,
   getDefaultResumeProfileId,
+  getTailoredResumeFile,
   resolveQuestion,
   tailorResume,
   updateAnswer,
 } from "../lib/apiClient";
 import { getStoredSession } from "../lib/session";
-import type { AutofillData, ResolvedAnswer, ScannedJobPosting, StoredSession } from "../lib/types";
+import type {
+  AutofillData,
+  ResolvedAnswer,
+  ScannedJobPosting,
+  StoredSession,
+  TailoredResumeFilePayload,
+} from "../lib/types";
 
 type BridgeMessage =
   | { type: "SESSION_UPDATE"; session: StoredSession }
@@ -18,7 +25,8 @@ type BridgeMessage =
   | { type: "GET_AUTOFILL_DATA" }
   | { type: "RESOLVE_QUESTION"; questionText: string }
   | { type: "UPDATE_ANSWER"; answerId: string; answerText: string }
-  | { type: "DELETE_ANSWER"; answerId: string };
+  | { type: "DELETE_ANSWER"; answerId: string }
+  | { type: "GET_TAILORED_RESUME_FILE" };
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -102,6 +110,10 @@ chrome.runtime.onMessage.addListener((message: BridgeMessage, sender, sendRespon
   }
   if (message.type === "DELETE_ANSWER") {
     void withSession((token) => deleteAnswer(token, message.answerId)).then(sendResponse);
+    return true;
+  }
+  if (message.type === "GET_TAILORED_RESUME_FILE") {
+    void withSession<TailoredResumeFilePayload | null>((token) => getTailoredResumeFile(token)).then(sendResponse);
     return true;
   }
   return false;

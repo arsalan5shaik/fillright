@@ -26,6 +26,9 @@ export default async function HomePage() {
       <p>
         <Link href="/profile">Profile</Link>
       </p>
+      <p>
+        <Link href="/applications">Your applications</Link>
+      </p>
       <SignOutButton />
     </main>
   );

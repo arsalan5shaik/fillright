@@ -63,3 +63,10 @@ export interface ResolvedAnswer {
 export type ResolveQuestionMessage = { type: "RESOLVE_QUESTION"; questionText: string };
 export type UpdateAnswerMessage = { type: "UPDATE_ANSWER"; answerId: string; answerText: string };
 export type DeleteAnswerMessage = { type: "DELETE_ANSWER"; answerId: string };
+
+export interface TailoredResumeFilePayload {
+  blob: Blob;
+  filename: string;
+}
+
+export type GetTailoredResumeFileMessage = { type: "GET_TAILORED_RESUME_FILE" };

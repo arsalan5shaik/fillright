@@ -179,3 +179,53 @@ export async function deleteAnswer(accessToken: string, answerId: string): Promi
   const res = await apiFetch(accessToken, `/qa/answers/${answerId}`, { method: "DELETE" });
   if (!res.ok && res.status !== 204) throw new Error(`delete answer failed: ${res.status} ${await res.text()}`);
 }
+
+async function getMostRecentTailoredResumePath(accessToken: string): Promise<string | null> {
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/applications?select=tailored_resume_url&tailored_resume_url=not.is.null&order=created_at.desc&limit=1`,
+    { headers: restHeaders(accessToken) },
+  );
+  if (!res.ok) throw new Error(`applications lookup failed: ${res.status} ${await res.text()}`);
+  const rows = (await res.json()) as { tailored_resume_url: string | null }[];
+  return rows[0]?.tailored_resume_url ?? null;
+}
+
+/** Mints a signed URL for a private-bucket object, same as
+ * app/db/storage.py's create_signed_url on the backend - done directly from
+ * the extension since it's a plain read against the caller's own storage
+ * object (RLS-protected via storage.objects policies), no server-side
+ * secret logic involved. */
+async function getSignedUrl(accessToken: string, bucket: string, path: string): Promise<string> {
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/sign/${bucket}/${path}`, {
+    method: "POST",
+    headers: { ...restHeaders(accessToken), "Content-Type": "application/json" },
+    body: JSON.stringify({ expiresIn: 3600 }),
+  });
+  if (!res.ok) throw new Error(`sign url failed: ${res.status} ${await res.text()}`);
+  const body = (await res.json()) as { signedURL: string };
+  return `${SUPABASE_URL}/storage/v1${body.signedURL}`;
+}
+
+export interface TailoredResumeFile {
+  blob: Blob;
+  filename: string;
+}
+
+/** Finds the most recently tailored resume, mints a fresh signed URL for it
+ * (the one returned at tailor-resume time isn't persisted anywhere and may
+ * well have expired by the time the user reaches the file-upload step of a
+ * real application), and downloads the PDF bytes. Returns null rather than
+ * throwing if there's nothing to attach yet - the caller treats that as "no
+ * tailored resume for this session", not an error. */
+export async function getTailoredResumeFile(accessToken: string): Promise<TailoredResumeFile | null> {
+  const path = await getMostRecentTailoredResumePath(accessToken);
+  if (!path) return null;
+
+  const signedUrl = await getSignedUrl(accessToken, "resumes", path);
+  const pdfRes = await fetch(signedUrl);
+  if (!pdfRes.ok) throw new Error(`resume download failed: ${pdfRes.status}`);
+
+  const blob = await pdfRes.blob();
+  const filename = path.split("/").pop() ?? "resume.pdf";
+  return { blob, filename };
+}
