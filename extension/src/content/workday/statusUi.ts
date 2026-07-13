@@ -67,14 +67,13 @@ export function showProgress(message: string, percent: number): void {
 
 const START_BUTTON_ROLE = "start-button";
 
-/** Shown on job-posting pages instead of scanning automatically - scanning
- * costs a real LLM call, so it should be something the user opts into for
- * this specific posting, not something that fires just from visiting the
- * page. */
+/** Shown alongside the (auto-triggered) scan progress bar on job-posting
+ * pages - clicking it drives Workday's own "Apply" button to kick off the
+ * application flow, which the extension then autofills automatically once
+ * it lands on the wizard/account-creation page. Doesn't touch the message
+ * or bar so it coexists with whatever scan status is currently showing. */
 export function showStartButton(onStart: () => void): void {
   const els = ensureBox();
-  els.message.textContent = "Job posting detected. Ready to scan and tailor your resume?";
-  els.barOuter.style.display = "none";
 
   let button = els.container.querySelector<HTMLButtonElement>(`[data-role="${START_BUTTON_ROLE}"]`);
   if (button) return; // already showing - don't stack duplicate buttons on repeat calls
@@ -84,7 +83,7 @@ export function showStartButton(onStart: () => void): void {
   button.textContent = "Start";
   button.style.cssText =
     "background: #4caf50; color: #fff; border: none; border-radius: 4px; " +
-    "padding: 6px 16px; cursor: pointer; font: inherit; font-weight: 600;";
+    "padding: 6px 16px; cursor: pointer; font: inherit; font-weight: 600; margin-top: 4px;";
   button.addEventListener("click", () => {
     button!.remove();
     onStart();

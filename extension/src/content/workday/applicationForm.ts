@@ -1,5 +1,5 @@
 import type { AutofillData, TailoredResumeFilePayload, WorkdayCredentials } from "../../lib/types";
-import { fillAccountCreationFields } from "./accountCredentials";
+import { fillAccountCreationFields, findAccountCreationFields } from "./accountCredentials";
 import { findResumeFileInput, injectFile } from "./fileAttach";
 import { runFillPass } from "./fillEngine";
 import { runQaPass } from "./qaPass";
@@ -7,13 +7,16 @@ import { showProgress, showStatus } from "./statusUi";
 import { buildValueProvider } from "./valueProvider";
 
 /** Not the job-posting page (no JobPosting JSON-LD, checked by the caller)
- * and has enough form fields to plausibly be a wizard step - deliberately
- * broad rather than guessing a specific URL path segment, since the actual
- * apply-flow URL pattern hasn't been verified against a live tenant (see
- * Milestone 13 notes). Runs harmlessly on the Review step too - it just
- * won't find any empty fields to fill there. */
+ * and either has enough form fields to plausibly be a wizard step, or has a
+ * password field on its own - the latter catches Workday's lean sign-in/
+ * create-account interstitial (sometimes just email + password, under the
+ * field-count threshold) that appears right after clicking Apply.
+ * Deliberately broad rather than guessing a specific URL path segment,
+ * since the actual apply-flow URL pattern hasn't been verified against a
+ * live tenant (see Milestone 13 notes). Runs harmlessly on the Review step
+ * too - it just won't find any empty fields to fill there. */
 export function looksLikeApplicationForm(): boolean {
-  return document.querySelectorAll("input, select, textarea").length >= 3;
+  return document.querySelectorAll("input, select, textarea").length >= 3 || findAccountCreationFields() !== null;
 }
 
 type AutofillDataResponse = { ok: true; data: AutofillData } | { ok: false; error: string };
