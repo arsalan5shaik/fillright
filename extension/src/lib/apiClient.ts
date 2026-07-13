@@ -1,4 +1,11 @@
-import type { AnalyzeApplicationResult, AutofillData, JdLocation, ResumeContact, ScannedJobPosting } from "./types";
+import type {
+  AnalyzeApplicationResult,
+  AutofillData,
+  JdLocation,
+  ResolvedAnswer,
+  ResumeContact,
+  ScannedJobPosting,
+} from "./types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL as string;
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
@@ -148,4 +155,27 @@ export async function getAutofillData(accessToken: string): Promise<AutofillData
     getMostRecentApplicationLocation(accessToken),
   ]);
   return { profileFields, contact, commonAnswers, jdLocation };
+}
+
+export async function resolveQuestion(accessToken: string, questionText: string): Promise<ResolvedAnswer> {
+  const res = await apiFetch(accessToken, "/qa/resolve", {
+    method: "POST",
+    body: JSON.stringify({ question_text: questionText }),
+  });
+  if (!res.ok) throw new Error(`qa/resolve failed: ${res.status} ${await res.text()}`);
+  const body = await res.json();
+  return { answerId: body.answer_id, answerText: body.answer_text, source: body.source, similarity: body.similarity };
+}
+
+export async function updateAnswer(accessToken: string, answerId: string, answerText: string): Promise<void> {
+  const res = await apiFetch(accessToken, `/qa/answers/${answerId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ answer_text: answerText }),
+  });
+  if (!res.ok) throw new Error(`update answer failed: ${res.status} ${await res.text()}`);
+}
+
+export async function deleteAnswer(accessToken: string, answerId: string): Promise<void> {
+  const res = await apiFetch(accessToken, `/qa/answers/${answerId}`, { method: "DELETE" });
+  if (!res.ok && res.status !== 204) throw new Error(`delete answer failed: ${res.status} ${await res.text()}`);
 }

@@ -112,6 +112,13 @@ describe("runFillPass", () => {
     expect(result.unmatched).toBeGreaterThan(0);
   });
 
+  it("collects unmatched text fields (with a usable label) as Q&A candidates", () => {
+    const result = runFillPass(testValueProvider);
+    expect(result.unmatchedTextFields).toHaveLength(1);
+    expect(result.unmatchedTextFields[0].labelText).toBe("Favorite Color");
+    expect(result.unmatchedTextFields[0].element.id).toBe("unknown");
+  });
+
   it("never clicks Submit or Next - the one guarantee that matters most", () => {
     const submitBtn = document.getElementById("submit-btn") as HTMLButtonElement;
     const nextBtn = document.getElementById("next-btn") as HTMLButtonElement;

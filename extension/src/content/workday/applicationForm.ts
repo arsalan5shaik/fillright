@@ -1,5 +1,6 @@
 import type { AutofillData } from "../../lib/types";
 import { runFillPass } from "./fillEngine";
+import { runQaPass } from "./qaPass";
 import { showStatus } from "./statusUi";
 import { buildValueProvider } from "./valueProvider";
 
@@ -31,7 +32,15 @@ export function runApplicationFormFill(): void {
     const result = runFillPass(buildValueProvider(response.data));
     showStatus(
       `Filled ${result.filled} field(s) confidently, ${result.guessed} guessed (please review), ` +
-        `${result.unmatched} left for you to fill in.`,
+        `checking ${result.unmatchedTextFields.length} unmapped field(s) for saved/AI answers...`,
     );
+
+    void runQaPass(result.unmatchedTextFields).then((attempted) => {
+      const stillUnfilled = result.unmatched - attempted;
+      showStatus(
+        `Filled ${result.filled} confidently, ${result.guessed} guessed (please review), ` +
+          `${attempted} answered via your answer bank/AI (please review), ${Math.max(stillUnfilled, 0)} left for you to fill in.`,
+      );
+    });
   });
 }

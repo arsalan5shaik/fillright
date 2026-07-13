@@ -1,18 +1,36 @@
 import {
   analyzeJobDescription,
+  deleteAnswer,
   generateCoverLetter,
   getAutofillData,
   getDefaultResumeProfileId,
+  resolveQuestion,
   tailorResume,
+  updateAnswer,
 } from "../lib/apiClient";
 import { getStoredSession } from "../lib/session";
-import type { AutofillData, ScannedJobPosting, StoredSession } from "../lib/types";
+import type { AutofillData, ResolvedAnswer, ScannedJobPosting, StoredSession } from "../lib/types";
 
 type BridgeMessage =
   | { type: "SESSION_UPDATE"; session: StoredSession }
   | { type: "SESSION_CLEARED" }
   | { type: "SCAN_JOB_POSTING"; posting: ScannedJobPosting }
-  | { type: "GET_AUTOFILL_DATA" };
+  | { type: "GET_AUTOFILL_DATA" }
+  | { type: "RESOLVE_QUESTION"; questionText: string }
+  | { type: "UPDATE_ANSWER"; answerId: string; answerText: string }
+  | { type: "DELETE_ANSWER"; answerId: string };
+
+type Result<T> = { ok: true; data: T } | { ok: false; error: string };
+
+async function withSession<T>(fn: (accessToken: string) => Promise<T>): Promise<Result<T>> {
+  const session = await getStoredSession();
+  if (!session) return { ok: false, error: "Not signed in - log into the FillRight website first." };
+  try {
+    return { ok: true, data: await fn(session.access_token) };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
 
 function sendProgress(tabId: number, status: string): void {
   chrome.tabs.sendMessage(tabId, { type: "SCAN_PROGRESS", tabId, status }).catch(() => {
@@ -53,18 +71,6 @@ async function handleScanJobPosting(posting: ScannedJobPosting, tabId: number): 
   }
 }
 
-async function handleGetAutofillData(): Promise<
-  { ok: true; data: AutofillData } | { ok: false; error: string }
-> {
-  const session = await getStoredSession();
-  if (!session) return { ok: false, error: "Not signed in - log into the FillRight website first." };
-  try {
-    return { ok: true, data: await getAutofillData(session.access_token) };
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
-  }
-}
-
 chrome.runtime.onMessage.addListener((message: BridgeMessage, sender, sendResponse) => {
   if (message.type === "SESSION_UPDATE") {
     chrome.storage.local.set({ session: message.session }).then(() => sendResponse({ ok: true }));
@@ -83,7 +89,19 @@ chrome.runtime.onMessage.addListener((message: BridgeMessage, sender, sendRespon
     return true;
   }
   if (message.type === "GET_AUTOFILL_DATA") {
-    void handleGetAutofillData().then(sendResponse);
+    void withSession<AutofillData>((token) => getAutofillData(token)).then(sendResponse);
+    return true;
+  }
+  if (message.type === "RESOLVE_QUESTION") {
+    void withSession<ResolvedAnswer>((token) => resolveQuestion(token, message.questionText)).then(sendResponse);
+    return true;
+  }
+  if (message.type === "UPDATE_ANSWER") {
+    void withSession((token) => updateAnswer(token, message.answerId, message.answerText)).then(sendResponse);
+    return true;
+  }
+  if (message.type === "DELETE_ANSWER") {
+    void withSession((token) => deleteAnswer(token, message.answerId)).then(sendResponse);
     return true;
   }
   return false;

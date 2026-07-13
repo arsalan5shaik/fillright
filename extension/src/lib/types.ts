@@ -52,3 +52,14 @@ export interface AutofillData {
 }
 
 export type GetAutofillDataMessage = { type: "GET_AUTOFILL_DATA" };
+
+export interface ResolvedAnswer {
+  answerId: string;
+  answerText: string;
+  source: "answer_bank" | "llm_generated";
+  similarity: number | null;
+}
+
+export type ResolveQuestionMessage = { type: "RESOLVE_QUESTION"; questionText: string };
+export type UpdateAnswerMessage = { type: "UPDATE_ANSWER"; answerId: string; answerText: string };
+export type DeleteAnswerMessage = { type: "DELETE_ANSWER"; answerId: string };

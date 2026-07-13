@@ -1,13 +1,30 @@
 import { markField } from "./confidenceUi";
 import { matchFieldConcept, type FieldConcept } from "./fieldMap";
-import { getAssociatedLabelText, isFillableTextInput, isVisible, setFieldValue, setSelectValue } from "./formUtils";
+import {
+  type FillableInput,
+  getAssociatedLabelText,
+  isFillableTextInput,
+  isVisible,
+  setFieldValue,
+  setSelectValue,
+} from "./formUtils";
 
 export type ValueProvider = (concept: FieldConcept) => { value: string; confidence: "high" | "low" } | null;
+
+export interface UnmatchedTextField {
+  element: FillableInput;
+  labelText: string;
+}
 
 export interface FillResult {
   filled: number;
   guessed: number;
   unmatched: number;
+  // Text/textarea fields FillRight couldn't map to a known concept but that
+  // do have a usable label - candidates for the Milestone 14 Q&A pass.
+  // Selects are excluded: free-text generation can't answer "pick an
+  // option" questions.
+  unmatchedTextFields: UnmatchedTextField[];
 }
 
 /** Defensive guard, even though this module never dispatches clicks or
@@ -19,7 +36,7 @@ function isSafeToTouch(el: HTMLInputElement | HTMLSelectElement | HTMLTextAreaEl
 }
 
 export function runFillPass(getValue: ValueProvider): FillResult {
-  const result: FillResult = { filled: 0, guessed: 0, unmatched: 0 };
+  const result: FillResult = { filled: 0, guessed: 0, unmatched: 0, unmatchedTextFields: [] };
   const candidates = document.querySelectorAll<HTMLElement>("input, select, textarea");
 
   for (const el of candidates) {
@@ -32,14 +49,22 @@ export function runFillPass(getValue: ValueProvider): FillResult {
     const automationId = el.getAttribute("data-automation-id");
     const labelText = getAssociatedLabelText(el);
     const match = matchFieldConcept(automationId, labelText);
-    if (!match) {
+
+    const recordUnmatched = () => {
       result.unmatched++;
+      if (isFillableTextInput(el) && labelText) {
+        result.unmatchedTextFields.push({ element: el, labelText });
+      }
+    };
+
+    if (!match) {
+      recordUnmatched();
       continue;
     }
 
     const provided = getValue(match.concept);
     if (!provided) {
-      result.unmatched++;
+      recordUnmatched();
       continue;
     }
 
