@@ -1,38 +1,33 @@
-import os
-import sys
+import io
 from datetime import date as date_cls
 from pathlib import Path
 
-if sys.platform == "win32":
-    # WeasyPrint needs GTK's native Pango/Cairo/GObject libraries on Windows
-    # (pip alone doesn't provide them - see the GTK3 Runtime for Windows
-    # installer). This makes it work regardless of the calling shell's PATH,
-    # and is a no-op on Linux (e.g. Render), which gets these via apt instead.
-    _gtk_bin = Path(r"C:\Program Files\GTK3-Runtime Win64\bin")
-    if _gtk_bin.exists() and str(_gtk_bin) not in os.environ.get("PATH", ""):
-        os.environ["PATH"] = str(_gtk_bin) + os.pathsep + os.environ.get("PATH", "")
-    _fontconfig_dir = Path(r"C:\Program Files\GTK3-Runtime Win64\etc\fonts")
-    if _fontconfig_dir.exists():
-        os.environ.setdefault("FONTCONFIG_PATH", str(_fontconfig_dir))
+from jinja2 import Environment, FileSystemLoader, select_autoescape
+from xhtml2pdf import pisa
 
-import weasyprint  # noqa: E402
-from jinja2 import Environment, FileSystemLoader, select_autoescape  # noqa: E402
-
-from app.schemas.resume import ContactInfo  # noqa: E402
-from app.schemas.tailored_resume import TailoredResume  # noqa: E402
+from app.schemas.resume import ContactInfo
+from app.schemas.tailored_resume import TailoredResume
 
 _TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates"
 _env = Environment(loader=FileSystemLoader(_TEMPLATES_DIR), autoescape=select_autoescape())
 
 
+def _render_pdf(html: str) -> bytes:
+    buf = io.BytesIO()
+    result = pisa.CreatePDF(html, dest=buf)
+    if result.err:
+        raise RuntimeError(f"PDF rendering failed with {result.err} error(s)")
+    return buf.getvalue()
+
+
 def render_resume_pdf(resume: TailoredResume) -> bytes:
     template = _env.get_template("resume.html")
     html = template.render(resume=resume)
-    return weasyprint.HTML(string=html).write_pdf()
+    return _render_pdf(html)
 
 
 def render_cover_letter_pdf(text: str, contact: ContactInfo) -> bytes:
     template = _env.get_template("cover_letter.html")
     paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
     html = template.render(contact=contact, date=date_cls.today().strftime("%B %d, %Y"), paragraphs=paragraphs)
-    return weasyprint.HTML(string=html).write_pdf()
+    return _render_pdf(html)

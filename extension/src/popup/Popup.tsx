@@ -1,14 +1,13 @@
 import { useEffect, useState } from "react";
 
+import { getStoredSession } from "../lib/session";
 import type { StoredSession } from "../lib/types";
 
 export function Popup() {
   const [session, setSession] = useState<StoredSession | null | undefined>(undefined);
 
   useEffect(() => {
-    chrome.storage.local.get("session").then((result) => {
-      setSession((result.session as StoredSession | undefined) ?? null);
-    });
+    getStoredSession().then(setSession);
   }, []);
 
   return (

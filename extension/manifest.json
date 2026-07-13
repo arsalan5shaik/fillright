@@ -15,7 +15,13 @@
       "matches": ["http://localhost:3000/*", "http://localhost:3001/*"],
       "js": ["src/content/website-bridge.ts"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["*://*.myworkdayjobs.com/*"],
+      "js": ["src/content/workday/index.ts"],
+      "run_at": "document_idle"
     }
   ],
-  "permissions": ["storage"]
+  "permissions": ["storage"],
+  "host_permissions": ["http://localhost:8000/*", "https://qhzngglgkmaayqylgtgh.supabase.co/*"]
 }
