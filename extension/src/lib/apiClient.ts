@@ -1,4 +1,4 @@
-import type { AnalyzeApplicationResult, ScannedJobPosting } from "./types";
+import type { AnalyzeApplicationResult, AutofillData, JdLocation, ResumeContact, ScannedJobPosting } from "./types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL as string;
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
@@ -73,4 +73,79 @@ export async function getDefaultResumeProfileId(accessToken: string): Promise<st
   if (!res.ok) throw new Error(`resume_profiles lookup failed: ${res.status} ${await res.text()}`);
   const rows = (await res.json()) as { id: string }[];
   return rows[0]?.id ?? null;
+}
+
+function restHeaders(accessToken: string) {
+  return { Authorization: `Bearer ${accessToken}`, apikey: SUPABASE_ANON_KEY };
+}
+
+async function getProfileFields(accessToken: string): Promise<Record<string, string>> {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/profile_fields?select=field_key,field_value`, {
+    headers: restHeaders(accessToken),
+  });
+  if (!res.ok) throw new Error(`profile_fields lookup failed: ${res.status} ${await res.text()}`);
+  const rows = (await res.json()) as { field_key: string; field_value: string | null }[];
+  const fields: Record<string, string> = {};
+  for (const row of rows) {
+    if (row.field_value) fields[row.field_key] = row.field_value;
+  }
+  return fields;
+}
+
+async function getDefaultResumeContact(accessToken: string): Promise<ResumeContact | null> {
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/resume_profiles?select=parsed_json&order=is_default.desc,updated_at.desc&limit=1`,
+    { headers: restHeaders(accessToken) },
+  );
+  if (!res.ok) throw new Error(`resume_profiles lookup failed: ${res.status} ${await res.text()}`);
+  const rows = (await res.json()) as { parsed_json: { contact?: ResumeContact } }[];
+  return rows[0]?.parsed_json?.contact ?? null;
+}
+
+/** Correlates common_questions (global, public read - id -> category) with
+ * the caller's saved answers (via FastAPI, which decrypts sensitive ones)
+ * to build a category -> answer_value map the fill engine can key off of. */
+async function getCommonAnswersByCategory(accessToken: string): Promise<Record<string, string>> {
+  const [questionsRes, answersRes] = await Promise.all([
+    fetch(`${SUPABASE_URL}/rest/v1/common_questions?select=id,category`, { headers: restHeaders(accessToken) }),
+    apiFetch(accessToken, "/answers/common"),
+  ]);
+  if (!questionsRes.ok) throw new Error(`common_questions lookup failed: ${questionsRes.status}`);
+  if (!answersRes.ok) throw new Error(`answers/common lookup failed: ${answersRes.status}`);
+
+  const questions = (await questionsRes.json()) as { id: string; category: string }[];
+  const answers = (await answersRes.json()) as { common_question_id: string; answer_value: string }[];
+  const categoryById = new Map(questions.map((q) => [q.id, q.category]));
+
+  const byCategory: Record<string, string> = {};
+  for (const answer of answers) {
+    const category = categoryById.get(answer.common_question_id);
+    if (category) byCategory[category] = answer.answer_value;
+  }
+  return byCategory;
+}
+
+async function getMostRecentApplicationLocation(accessToken: string): Promise<JdLocation | null> {
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/applications?select=jd_analysis_json&order=created_at.desc&limit=1`,
+    { headers: restHeaders(accessToken) },
+  );
+  if (!res.ok) throw new Error(`applications lookup failed: ${res.status} ${await res.text()}`);
+  const rows = (await res.json()) as { jd_analysis_json?: { locations?: JdLocation[] } }[];
+  return rows[0]?.jd_analysis_json?.locations?.[0] ?? null;
+}
+
+/** Aggregates everything the fill engine needs into one bundle. Called from
+ * the background worker (which alone has host_permissions/CORS clearance
+ * for cross-origin fetch) in response to the content script's
+ * GET_AUTOFILL_DATA message - the content script itself only touches the
+ * DOM, never the network. */
+export async function getAutofillData(accessToken: string): Promise<AutofillData> {
+  const [profileFields, contact, commonAnswers, jdLocation] = await Promise.all([
+    getProfileFields(accessToken),
+    getDefaultResumeContact(accessToken),
+    getCommonAnswersByCategory(accessToken),
+    getMostRecentApplicationLocation(accessToken),
+  ]);
+  return { profileFields, contact, commonAnswers, jdLocation };
 }

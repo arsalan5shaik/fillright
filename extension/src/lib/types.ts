@@ -28,3 +28,27 @@ export interface AnalyzeApplicationResult {
 export type ScanProgressMessage = { type: "SCAN_PROGRESS"; tabId: number; status: string };
 
 export type ScanJobPostingMessage = { type: "SCAN_JOB_POSTING"; posting: ScannedJobPosting };
+
+export interface ResumeContact {
+  full_name: string | null;
+  email: string | null;
+  phone: string | null;
+  linkedin_url: string | null;
+  portfolio_url: string | null;
+  github_url: string | null;
+}
+
+export interface JdLocation {
+  city: string | null;
+  state: string | null;
+  country: string | null;
+}
+
+export interface AutofillData {
+  profileFields: Record<string, string>;
+  contact: ResumeContact | null;
+  commonAnswers: Record<string, string>;
+  jdLocation: JdLocation | null;
+}
+
+export type GetAutofillDataMessage = { type: "GET_AUTOFILL_DATA" };

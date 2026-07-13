@@ -1,4 +1,5 @@
 import type { ScanProgressMessage } from "../../lib/types";
+import { looksLikeApplicationForm, runApplicationFormFill } from "./applicationForm";
 import { detectJobPosting } from "./detect";
 import { showStatus } from "./statusUi";
 
@@ -18,4 +19,6 @@ if (posting) {
       showStatus(message.status);
     }
   });
+} else if (looksLikeApplicationForm()) {
+  runApplicationFormFill();
 }

@@ -1,16 +1,18 @@
 import {
   analyzeJobDescription,
   generateCoverLetter,
+  getAutofillData,
   getDefaultResumeProfileId,
   tailorResume,
 } from "../lib/apiClient";
 import { getStoredSession } from "../lib/session";
-import type { ScannedJobPosting, StoredSession } from "../lib/types";
+import type { AutofillData, ScannedJobPosting, StoredSession } from "../lib/types";
 
 type BridgeMessage =
   | { type: "SESSION_UPDATE"; session: StoredSession }
   | { type: "SESSION_CLEARED" }
-  | { type: "SCAN_JOB_POSTING"; posting: ScannedJobPosting };
+  | { type: "SCAN_JOB_POSTING"; posting: ScannedJobPosting }
+  | { type: "GET_AUTOFILL_DATA" };
 
 function sendProgress(tabId: number, status: string): void {
   chrome.tabs.sendMessage(tabId, { type: "SCAN_PROGRESS", tabId, status }).catch(() => {
@@ -51,6 +53,18 @@ async function handleScanJobPosting(posting: ScannedJobPosting, tabId: number): 
   }
 }
 
+async function handleGetAutofillData(): Promise<
+  { ok: true; data: AutofillData } | { ok: false; error: string }
+> {
+  const session = await getStoredSession();
+  if (!session) return { ok: false, error: "Not signed in - log into the FillRight website first." };
+  try {
+    return { ok: true, data: await getAutofillData(session.access_token) };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 chrome.runtime.onMessage.addListener((message: BridgeMessage, sender, sendResponse) => {
   if (message.type === "SESSION_UPDATE") {
     chrome.storage.local.set({ session: message.session }).then(() => sendResponse({ ok: true }));
@@ -66,6 +80,10 @@ chrome.runtime.onMessage.addListener((message: BridgeMessage, sender, sendRespon
       void handleScanJobPosting(message.posting, tabId);
     }
     sendResponse({ ok: true });
+    return true;
+  }
+  if (message.type === "GET_AUTOFILL_DATA") {
+    void handleGetAutofillData().then(sendResponse);
     return true;
   }
   return false;
