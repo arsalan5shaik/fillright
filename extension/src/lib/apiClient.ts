@@ -5,6 +5,7 @@ import type {
   ResolvedAnswer,
   ResumeContact,
   ScannedJobPosting,
+  WorkdayCredentials,
 } from "./types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL as string;
@@ -228,4 +229,10 @@ export async function getTailoredResumeFile(accessToken: string): Promise<Tailor
   const blob = await pdfRes.blob();
   const filename = path.split("/").pop() ?? "resume.pdf";
   return { blob, filename };
+}
+
+export async function getWorkdayCredentials(accessToken: string): Promise<WorkdayCredentials> {
+  const res = await apiFetch(accessToken, "/profile/workday-credentials");
+  if (!res.ok) throw new Error(`workday-credentials failed: ${res.status} ${await res.text()}`);
+  return res.json();
 }

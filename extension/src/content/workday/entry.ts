@@ -21,5 +21,5 @@ if (posting) {
     });
   });
 } else if (looksLikeApplicationForm()) {
-  runApplicationFormFill();
+  void runApplicationFormFill();
 }

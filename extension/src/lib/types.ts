@@ -70,3 +70,10 @@ export interface TailoredResumeFilePayload {
 }
 
 export type GetTailoredResumeFileMessage = { type: "GET_TAILORED_RESUME_FILE" };
+
+export interface WorkdayCredentials {
+  email: string | null;
+  password: string | null;
+}
+
+export type GetWorkdayCredentialsMessage = { type: "GET_WORKDAY_CREDENTIALS" };

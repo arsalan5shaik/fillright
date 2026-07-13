@@ -1,4 +1,5 @@
-import type { AutofillData, TailoredResumeFilePayload } from "../../lib/types";
+import type { AutofillData, TailoredResumeFilePayload, WorkdayCredentials } from "../../lib/types";
+import { fillAccountCreationFields } from "./accountCredentials";
 import { findResumeFileInput, injectFile } from "./fileAttach";
 import { runFillPass } from "./fillEngine";
 import { runQaPass } from "./qaPass";
@@ -17,6 +18,7 @@ export function looksLikeApplicationForm(): boolean {
 
 type AutofillDataResponse = { ok: true; data: AutofillData } | { ok: false; error: string };
 type TailoredResumeFileResponse = { ok: true; data: TailoredResumeFilePayload | null } | { ok: false; error: string };
+type WorkdayCredentialsResponse = { ok: true; data: WorkdayCredentials } | { ok: false; error: string };
 
 function sendMessage<T>(message: unknown): Promise<T> {
   return new Promise((resolve) => chrome.runtime.sendMessage(message, resolve));
@@ -38,37 +40,46 @@ async function runResumeFileAttach(): Promise<string> {
   return `Attached your tailored resume (${response.data.filename}).`;
 }
 
-export function runApplicationFormFill(): void {
-  showProgress("Filling application form...", 10);
+/** No-op unless this step has a password field (Workday's own
+ * "create a candidate account" step for this tenant - see
+ * accountCredentials.ts) and the user has saved credentials to fill it with. */
+async function runAccountCredentialsFill(): Promise<string> {
+  const response = await sendMessage<WorkdayCredentialsResponse>({ type: "GET_WORKDAY_CREDENTIALS" });
+  if (!response || !response.ok || !response.data.email || !response.data.password) return "";
 
-  chrome.runtime.sendMessage({ type: "GET_AUTOFILL_DATA" }, (response: AutofillDataResponse | undefined) => {
-    if (chrome.runtime.lastError) {
-      showStatus(`Error: ${chrome.runtime.lastError.message}`);
-      return;
-    }
-    if (!response || !response.ok) {
-      showStatus(`Error: ${response?.error ?? "unknown error"}`);
-      return;
-    }
+  const filled = fillAccountCreationFields(response.data.email, response.data.password);
+  return filled ? "Filled your saved Workday account email/password. " : "";
+}
 
-    const result = runFillPass(buildValueProvider(response.data));
-    showProgress(
-      `Filled ${result.filled} field(s) confidently, ${result.guessed} guessed (please review), ` +
-        `checking ${result.unmatchedTextFields.length} unmapped field(s) for saved/AI answers...`,
-      55,
-    );
+export async function runApplicationFormFill(): Promise<void> {
+  showProgress("Checking for a Workday account-creation step...", 5);
+  const credentialsStatus = await runAccountCredentialsFill();
 
-    void Promise.all([runQaPass(result.unmatchedTextFields), runResumeFileAttach()]).then(
-      ([attempted, fileAttachStatus]) => {
-        const stillUnfilled = result.unmatched - attempted;
-        showProgress(
-          `Filled ${result.filled} confidently, ${result.guessed} guessed (please review), ` +
-            `${attempted} answered via your answer bank/AI (please review), ` +
-            `${Math.max(stillUnfilled, 0)} left for you to fill in. ${fileAttachStatus} ` +
-            `Review everything before clicking Submit yourself - FillRight never submits for you.`,
-          100,
-        );
-      },
-    );
-  });
+  showProgress(`${credentialsStatus}Filling application form...`, 15);
+
+  const autofillResponse = await sendMessage<AutofillDataResponse>({ type: "GET_AUTOFILL_DATA" });
+  if (!autofillResponse || !autofillResponse.ok) {
+    showStatus(`Error: ${autofillResponse && !autofillResponse.ok ? autofillResponse.error : "unknown error"}`);
+    return;
+  }
+
+  const result = runFillPass(buildValueProvider(autofillResponse.data));
+  showProgress(
+    `${credentialsStatus}Filled ${result.filled} field(s) confidently, ${result.guessed} guessed (please review), ` +
+      `checking ${result.unmatchedTextFields.length} unmapped field(s) for saved/AI answers...`,
+    55,
+  );
+
+  const [attempted, fileAttachStatus] = await Promise.all([
+    runQaPass(result.unmatchedTextFields),
+    runResumeFileAttach(),
+  ]);
+  const stillUnfilled = result.unmatched - attempted;
+  showProgress(
+    `${credentialsStatus}Filled ${result.filled} confidently, ${result.guessed} guessed (please review), ` +
+      `${attempted} answered via your answer bank/AI (please review), ` +
+      `${Math.max(stillUnfilled, 0)} left for you to fill in. ${fileAttachStatus} ` +
+      `Review everything before clicking Submit yourself - FillRight never submits for you.`,
+    100,
+  );
 }

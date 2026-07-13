@@ -5,6 +5,7 @@ import {
   getAutofillData,
   getDefaultResumeProfileId,
   getTailoredResumeFile,
+  getWorkdayCredentials,
   resolveQuestion,
   tailorResume,
   updateAnswer,
@@ -16,6 +17,7 @@ import type {
   ScannedJobPosting,
   StoredSession,
   TailoredResumeFilePayload,
+  WorkdayCredentials,
 } from "../lib/types";
 
 type BridgeMessage =
@@ -26,7 +28,8 @@ type BridgeMessage =
   | { type: "RESOLVE_QUESTION"; questionText: string }
   | { type: "UPDATE_ANSWER"; answerId: string; answerText: string }
   | { type: "DELETE_ANSWER"; answerId: string }
-  | { type: "GET_TAILORED_RESUME_FILE" };
+  | { type: "GET_TAILORED_RESUME_FILE" }
+  | { type: "GET_WORKDAY_CREDENTIALS" };
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -118,6 +121,10 @@ chrome.runtime.onMessage.addListener((message: BridgeMessage, sender, sendRespon
   }
   if (message.type === "GET_TAILORED_RESUME_FILE") {
     void withSession<TailoredResumeFilePayload | null>((token) => getTailoredResumeFile(token)).then(sendResponse);
+    return true;
+  }
+  if (message.type === "GET_WORKDAY_CREDENTIALS") {
+    void withSession<WorkdayCredentials>((token) => getWorkdayCredentials(token)).then(sendResponse);
     return true;
   }
   return false;
