@@ -40,13 +40,16 @@ export const FIELD_CONCEPTS: FieldConceptDef[] = [
   },
   { concept: "address_line2", automationIdHints: ["addressline2"], labelKeywords: ["address line 2", "apt", "suite", "unit"] },
   { concept: "city", automationIdHints: ["addresssection_city", "municipality"], labelKeywords: ["city"] },
+  // Checked before "state": a combined "Country / Region" label contains
+  // "region" (one of state's own keywords below), so country must win the
+  // match first or that field would get filled with the state value instead.
+  { concept: "country", automationIdHints: ["country"], labelKeywords: ["country"] },
   {
     concept: "state",
     automationIdHints: ["addresssection_region", "countryregion"],
     labelKeywords: ["state", "province", "region"],
   },
   { concept: "zip_code", automationIdHints: ["postalcode"], labelKeywords: ["zip", "postal code"] },
-  { concept: "country", automationIdHints: ["country"], labelKeywords: ["country"] },
   { concept: "linkedin_url", automationIdHints: ["linkedin"], labelKeywords: ["linkedin"] },
   { concept: "portfolio_url", automationIdHints: ["website", "portfolio"], labelKeywords: ["website", "portfolio"] },
   {

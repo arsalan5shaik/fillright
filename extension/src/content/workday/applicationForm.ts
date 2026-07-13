@@ -1,5 +1,6 @@
 import type { AutofillData, TailoredResumeFilePayload, WorkdayCredentials } from "../../lib/types";
 import { fillAccountCreationFields, findAccountCreationFields } from "./accountCredentials";
+import { answerConflictOfInterestQuestions } from "./booleanScreeningQuestions";
 import { findResumeFileInput, injectFile } from "./fileAttach";
 import { runFillPass } from "./fillEngine";
 import { runQaPass } from "./qaPass";
@@ -67,8 +68,10 @@ export async function runApplicationFormFill(): Promise<void> {
   }
 
   const result = runFillPass(buildValueProvider(autofillResponse.data));
+  const conflictOfInterestAnswered = answerConflictOfInterestQuestions();
   showProgress(
     `${credentialsStatus}Filled ${result.filled} field(s) confidently, ${result.guessed} guessed (please review), ` +
+      `${conflictOfInterestAnswered} screening question(s) auto-answered "No" (please review), ` +
       `checking ${result.unmatchedTextFields.length} unmapped field(s) for saved/AI answers...`,
     55,
   );

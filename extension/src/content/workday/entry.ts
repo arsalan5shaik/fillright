@@ -2,6 +2,7 @@ import type { ScanProgressMessage } from "../../lib/types";
 import { looksLikeApplicationForm, runApplicationFormFill } from "./applicationForm";
 import { findApplyButton, findApplyManuallyButton } from "./applyButton";
 import { detectJobPosting } from "./detect";
+import { getAssociatedLabelText } from "./formUtils";
 import { showProgress, showStartButton, showStatus } from "./statusUi";
 
 const posting = detectJobPosting();
@@ -43,9 +44,17 @@ if (posting) {
 let modalHandled = false;
 let lastFillSignature: string | null = null;
 
+/** Fingerprints the current step by its field labels, not a heading or the
+ * URL - Workday tenants commonly keep a persistent job-title heading (and
+ * sometimes the same URL) visible across every wizard step via client-side
+ * routing, so either of those alone can look unchanged from one step to the
+ * next even though the actual fields on the page are completely different. */
 function currentStepSignature(): string {
-  const heading = document.querySelector("h1, h2")?.textContent?.trim() ?? "";
-  return `${window.location.href}::${heading}`;
+  const labels = Array.from(document.querySelectorAll<HTMLElement>("input, select, textarea"))
+    .slice(0, 25)
+    .map((el) => getAssociatedLabelText(el) ?? "")
+    .join("|");
+  return labels;
 }
 
 function evaluateApplicationFlow(): void {
