@@ -2,7 +2,7 @@ import type { AutofillData, TailoredResumeFilePayload, WorkdayCredentials } from
 import { fillAccountCreationFields, findAccountCreationFields } from "./accountCredentials";
 import { answerConflictOfInterestQuestions } from "./booleanScreeningQuestions";
 import { findResumeFileInput, injectFile } from "./fileAttach";
-import { runFillPass } from "./fillEngine";
+import { runComboboxFillPass, runFillPass } from "./fillEngine";
 import { runQaPass } from "./qaPass";
 import { showProgress, showStatus } from "./statusUi";
 import { buildValueProvider } from "./valueProvider";
@@ -67,10 +67,15 @@ export async function runApplicationFormFill(): Promise<void> {
     return;
   }
 
-  const result = runFillPass(buildValueProvider(autofillResponse.data));
+  const getValue = buildValueProvider(autofillResponse.data);
+  const result = runFillPass(getValue);
+  const comboboxResult = await runComboboxFillPass(getValue);
   const conflictOfInterestAnswered = answerConflictOfInterestQuestions();
+
+  const totalFilled = result.filled + comboboxResult.filled;
+  const totalGuessed = result.guessed + comboboxResult.guessed;
   showProgress(
-    `${credentialsStatus}Filled ${result.filled} field(s) confidently, ${result.guessed} guessed (please review), ` +
+    `${credentialsStatus}Filled ${totalFilled} field(s) confidently, ${totalGuessed} guessed (please review), ` +
       `${conflictOfInterestAnswered} screening question(s) auto-answered "No" (please review), ` +
       `checking ${result.unmatchedTextFields.length} unmapped field(s) for saved/AI answers...`,
     55,
@@ -82,7 +87,7 @@ export async function runApplicationFormFill(): Promise<void> {
   ]);
   const stillUnfilled = result.unmatched - attempted;
   showProgress(
-    `${credentialsStatus}Filled ${result.filled} confidently, ${result.guessed} guessed (please review), ` +
+    `${credentialsStatus}Filled ${totalFilled} confidently, ${totalGuessed} guessed (please review), ` +
       `${attempted} answered via your answer bank/AI (please review), ` +
       `${Math.max(stillUnfilled, 0)} left for you to fill in. ${fileAttachStatus} ` +
       `Review everything before clicking Submit yourself - FillRight never submits for you.`,

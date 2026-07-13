@@ -8,6 +8,7 @@ import {
   setFieldValue,
   setSelectValue,
 } from "./formUtils";
+import { isComboboxEmpty, isWorkdayComboboxTrigger, setWorkdayComboboxValue } from "./workdayCombobox";
 
 export type ValueProvider = (concept: FieldConcept) => { value: string; confidence: "high" | "low" } | null;
 
@@ -83,6 +84,42 @@ export function runFillPass(getValue: ValueProvider): FillResult {
         result.unmatched++;
       }
     }
+  }
+
+  return result;
+}
+
+export interface ComboboxFillResult {
+  filled: number;
+  guessed: number;
+}
+
+/** Separate async pass for Workday's custom "prompt" combobox widgets
+ * (button[aria-haspopup="listbox"] - see workdayCombobox.ts), run after the
+ * main synchronous fill pass. Kept apart from runFillPass rather than
+ * folded in: opening a popup and waiting for its options to render is
+ * inherently async, and runFillPass's synchronous contract is relied on
+ * elsewhere (and well covered by existing tests) as-is. */
+export async function runComboboxFillPass(getValue: ValueProvider): Promise<ComboboxFillResult> {
+  const result: ComboboxFillResult = { filled: 0, guessed: 0 };
+  const buttons = Array.from(document.querySelectorAll<HTMLElement>("button")).filter(isWorkdayComboboxTrigger);
+
+  for (const button of buttons) {
+    if (!isVisible(button) || !isComboboxEmpty(button)) continue;
+
+    const labelText = getAssociatedLabelText(button);
+    const match = matchFieldConcept(button.getAttribute("data-automation-id"), labelText);
+    if (!match) continue;
+
+    const provided = getValue(match.concept);
+    if (!provided) continue;
+
+    const didSet = await setWorkdayComboboxValue(button, provided.value);
+    if (!didSet) continue;
+
+    const overallConfidence = match.matchConfidence === "high" && provided.confidence === "high" ? "high" : "low";
+    markField(button, overallConfidence);
+    result[overallConfidence === "high" ? "filled" : "guessed"]++;
   }
 
   return result;
