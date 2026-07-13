@@ -11,16 +11,25 @@ import { showProgress, showStatus } from "./statusUi";
 import { buildValueProvider } from "./valueProvider";
 
 /** Not the job-posting page (no JobPosting JSON-LD, checked by the caller)
- * and either has enough form fields to plausibly be a wizard step, or has a
- * password field on its own - the latter catches Workday's lean sign-in/
- * create-account interstitial (sometimes just email + password, under the
- * field-count threshold) that appears right after clicking Apply.
- * Deliberately broad rather than guessing a specific URL path segment,
- * since the actual apply-flow URL pattern hasn't been verified against a
- * live tenant (see Milestone 13 notes). Runs harmlessly on the Review step
- * too - it just won't find any empty fields to fill there. */
+ * and either has enough form fields to plausibly be a wizard step, has a
+ * password field on its own (Workday's lean sign-in/create-account
+ * interstitial, sometimes just email + password, under the field-count
+ * threshold), or has an Add-gated repeatable section (My Experience can
+ * have zero actual <input>/<select>/<textarea> elements anywhere on the
+ * page - Work Experience/Education/Websites are entirely behind "Add"
+ * buttons until clicked - confirmed live: this step was being treated as
+ * "not an application form" and skipped entirely, so the Add-button
+ * clicking logic never even got a chance to run). Deliberately broad
+ * rather than guessing a specific URL path segment, since the actual
+ * apply-flow URL pattern hasn't been verified against a live tenant (see
+ * Milestone 13 notes). Runs harmlessly on the Review step too - it just
+ * won't find any empty fields to fill there. */
 export function looksLikeApplicationForm(): boolean {
-  return document.querySelectorAll("input, select, textarea").length >= 3 || hasAccountCreationStep();
+  return (
+    document.querySelectorAll("input, select, textarea").length >= 3 ||
+    hasAccountCreationStep() ||
+    document.querySelector('[data-automation-id="add-button"]') !== null
+  );
 }
 
 type AutofillDataResponse = { ok: true; data: AutofillData } | { ok: false; error: string };
