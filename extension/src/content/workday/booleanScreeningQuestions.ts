@@ -7,7 +7,7 @@ import { getAssociatedLabelText, isVisible } from "./formUtils";
  * Matched against the question text, not any specific company name, since
  * the hiring company differs per posting. */
 const AUTO_NO_PATTERNS: RegExp[] = [
-  /have you (ever )?(previously )?(been )?employed by/i,
+  /have you (ever )?(previously )?(been )?(employed by|worked (for|at)|an employee (of|at))/i,
   /(relative|family member).{0,80}(employ|work)/i,
   /(employ|work).{0,80}(relative|family member)/i,
   /government official/i,

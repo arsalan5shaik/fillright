@@ -42,6 +42,22 @@ describe("answerConflictOfInterestQuestions", () => {
     expect((document.getElementById("no2") as HTMLInputElement).checked).toBe(true);
   });
 
+  it("answers 'No' for 'have you previously worked for this organization' phrasing", () => {
+    document.body.innerHTML = `
+      <fieldset>
+        <legend>Have you previously worked for this organization? If Yes, please answer the questions below.</legend>
+        <label for="yes6"><input id="yes6" type="radio" name="prior-org" /> Yes</label>
+        <label for="no6"><input id="no6" type="radio" name="prior-org" /> No</label>
+      </fieldset>
+    `;
+    markVisible();
+
+    const answered = answerConflictOfInterestQuestions();
+
+    expect(answered).toBe(1);
+    expect((document.getElementById("no6") as HTMLInputElement).checked).toBe(true);
+  });
+
   it("does not touch an unrelated Yes/No question", () => {
     document.body.innerHTML = `
       <fieldset>

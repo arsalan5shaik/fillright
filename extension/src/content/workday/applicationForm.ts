@@ -3,7 +3,7 @@ import { checkAccountCreationConsent, hasAccountCreationStep } from "./accountCr
 import { answerConflictOfInterestQuestions } from "./booleanScreeningQuestions";
 import { findCoverLetterFileInput, findResumeFileInput, injectFile } from "./fileAttach";
 import { runComboboxFillPass, runFillPass, type ValueProvider } from "./fillEngine";
-import { answerFirstOptionQuestions } from "./firstOptionQuestions";
+import { answerFirstOptionQuestions, isAutoFirstOptionQuestion } from "./firstOptionQuestions";
 import { runQaPass } from "./qaPass";
 import { fillEducationSection, fillWebsitesSection, fillWorkExperienceSection, type WebsiteEntry } from "./repeatableSections";
 import { fillSkillsQuestion } from "./skillsQuestion";
@@ -117,8 +117,13 @@ export async function runApplicationFormFill(): Promise<void> {
   const comboboxResult = await runComboboxFillPass(getValue);
   const conflictOfInterestAnswered = answerConflictOfInterestQuestions();
 
+  // Excludes a "how did you hear about us"-style field from the free-text
+  // pass even if answerFirstOptionQuestions() failed to click through it -
+  // typing free text into what's actually a category picker is wrong
+  // regardless of whether the click-through succeeded, so worst case this
+  // field is just left blank rather than getting the wrong kind of answer.
   const remainingForQa = result.unmatchedTextFields.filter(
-    (field) => !fillSkillsQuestion(field, autofillResponse.data.jdKeywords),
+    (field) => !isAutoFirstOptionQuestion(field.labelText) && !fillSkillsQuestion(field, autofillResponse.data.jdKeywords),
   );
   const skillsAnswered = result.unmatchedTextFields.length - remainingForQa.length;
 
