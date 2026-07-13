@@ -133,14 +133,23 @@ async function getCommonAnswersByCategory(accessToken: string): Promise<Record<s
   return byCategory;
 }
 
-async function getMostRecentApplicationLocation(accessToken: string): Promise<JdLocation | null> {
+interface JdAnalysisKeyword {
+  term: string;
+  required: boolean;
+}
+
+async function getMostRecentJdAnalysis(
+  accessToken: string,
+): Promise<{ locations?: JdLocation[]; keywords?: JdAnalysisKeyword[] } | null> {
   const res = await fetch(
     `${SUPABASE_URL}/rest/v1/applications?select=jd_analysis_json&order=created_at.desc&limit=1`,
     { headers: restHeaders(accessToken) },
   );
   if (!res.ok) throw new Error(`applications lookup failed: ${res.status} ${await res.text()}`);
-  const rows = (await res.json()) as { jd_analysis_json?: { locations?: JdLocation[] } }[];
-  return rows[0]?.jd_analysis_json?.locations?.[0] ?? null;
+  const rows = (await res.json()) as {
+    jd_analysis_json?: { locations?: JdLocation[]; keywords?: JdAnalysisKeyword[] };
+  }[];
+  return rows[0]?.jd_analysis_json ?? null;
 }
 
 /** Aggregates everything the fill engine needs into one bundle. Called from
@@ -149,13 +158,22 @@ async function getMostRecentApplicationLocation(accessToken: string): Promise<Jd
  * GET_AUTOFILL_DATA message - the content script itself only touches the
  * DOM, never the network. */
 export async function getAutofillData(accessToken: string): Promise<AutofillData> {
-  const [profileFields, contact, commonAnswers, jdLocation] = await Promise.all([
+  const [profileFields, contact, commonAnswers, jdAnalysis] = await Promise.all([
     getProfileFields(accessToken),
     getDefaultResumeContact(accessToken),
     getCommonAnswersByCategory(accessToken),
-    getMostRecentApplicationLocation(accessToken),
+    getMostRecentJdAnalysis(accessToken),
   ]);
-  return { profileFields, contact, commonAnswers, jdLocation };
+
+  const jdLocation = jdAnalysis?.locations?.[0] ?? null;
+  // keyword_extraction's prompt already asks specifically for skill/
+  // technology terms (see jd_analyzer.py), so these need no further
+  // filtering - just required-first ordering for the skills question.
+  const jdKeywords = [...(jdAnalysis?.keywords ?? [])]
+    .sort((a, b) => Number(b.required) - Number(a.required))
+    .map((k) => k.term);
+
+  return { profileFields, contact, commonAnswers, jdLocation, jdKeywords };
 }
 
 export async function resolveQuestion(accessToken: string, questionText: string): Promise<ResolvedAnswer> {
@@ -212,6 +230,18 @@ export interface TailoredResumeFile {
   filename: string;
 }
 
+/** The stored path's filename is just the application id (a UUID) - fine
+ * for storage, but not something you'd want a recruiter to see attached to
+ * an application. Named after the candidate instead, e.g. "Jane Doe" ->
+ * "jane_doe_resume.pdf". */
+function slugifyFilename(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
 /** Finds the most recently tailored resume, mints a fresh signed URL for it
  * (the one returned at tailor-resume time isn't persisted anywhere and may
  * well have expired by the time the user reaches the file-upload step of a
@@ -222,12 +252,45 @@ export async function getTailoredResumeFile(accessToken: string): Promise<Tailor
   const path = await getMostRecentTailoredResumePath(accessToken);
   if (!path) return null;
 
-  const signedUrl = await getSignedUrl(accessToken, "resumes", path);
+  const [signedUrl, contact] = await Promise.all([
+    getSignedUrl(accessToken, "resumes", path),
+    getDefaultResumeContact(accessToken),
+  ]);
   const pdfRes = await fetch(signedUrl);
   if (!pdfRes.ok) throw new Error(`resume download failed: ${pdfRes.status}`);
 
   const blob = await pdfRes.blob();
-  const filename = path.split("/").pop() ?? "resume.pdf";
+  const filename = contact?.full_name ? `${slugifyFilename(contact.full_name)}_resume.pdf` : "resume.pdf";
+  return { blob, filename };
+}
+
+async function getMostRecentCoverLetterPath(accessToken: string): Promise<string | null> {
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/applications?select=cover_letter_url&cover_letter_url=not.is.null&order=created_at.desc&limit=1`,
+    { headers: restHeaders(accessToken) },
+  );
+  if (!res.ok) throw new Error(`applications lookup failed: ${res.status} ${await res.text()}`);
+  const rows = (await res.json()) as { cover_letter_url: string | null }[];
+  return rows[0]?.cover_letter_url ?? null;
+}
+
+/** Same shape and same "return null rather than throw" contract as
+ * getTailoredResumeFile - the caller only attaches this into a file input
+ * it has confirmed is a genuinely separate cover-letter upload slot, never
+ * into the resume slot. */
+export async function getCoverLetterFile(accessToken: string): Promise<TailoredResumeFile | null> {
+  const path = await getMostRecentCoverLetterPath(accessToken);
+  if (!path) return null;
+
+  const [signedUrl, contact] = await Promise.all([
+    getSignedUrl(accessToken, "resumes", path),
+    getDefaultResumeContact(accessToken),
+  ]);
+  const pdfRes = await fetch(signedUrl);
+  if (!pdfRes.ok) throw new Error(`cover letter download failed: ${pdfRes.status}`);
+
+  const blob = await pdfRes.blob();
+  const filename = contact?.full_name ? `${slugifyFilename(contact.full_name)}_cover_letter.pdf` : "cover_letter.pdf";
   return { blob, filename };
 }
 

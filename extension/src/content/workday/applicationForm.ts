@@ -1,9 +1,11 @@
 import type { AutofillData, TailoredResumeFilePayload, WorkdayCredentials } from "../../lib/types";
 import { fillAccountCreationFields, findAccountCreationFields } from "./accountCredentials";
 import { answerConflictOfInterestQuestions } from "./booleanScreeningQuestions";
-import { findResumeFileInput, injectFile } from "./fileAttach";
+import { findCoverLetterFileInput, findResumeFileInput, injectFile } from "./fileAttach";
 import { runComboboxFillPass, runFillPass } from "./fillEngine";
+import { answerFirstOptionQuestions } from "./firstOptionQuestions";
 import { runQaPass } from "./qaPass";
+import { fillSkillsQuestion } from "./skillsQuestion";
 import { showProgress, showStatus } from "./statusUi";
 import { buildValueProvider } from "./valueProvider";
 
@@ -44,6 +46,22 @@ async function runResumeFileAttach(): Promise<string> {
   return `Attached your tailored resume (${response.data.filename}).`;
 }
 
+/** Only acts when this step has a file input specifically labeled "cover
+ * letter" (see fileAttach.ts) - if a tenant has no such dedicated slot, the
+ * cover letter is never uploaded anywhere, and never substituted into the
+ * resume slot. */
+async function runCoverLetterFileAttach(): Promise<string> {
+  const input = findCoverLetterFileInput();
+  if (!input) return "";
+  if (input.files && input.files.length > 0) return "";
+
+  const response = await sendMessage<TailoredResumeFileResponse>({ type: "GET_COVER_LETTER_FILE" });
+  if (!response || !response.ok || !response.data) return "";
+
+  injectFile(input, response.data.blob, response.data.filename);
+  return `Attached your cover letter (${response.data.filename}).`;
+}
+
 /** No-op unless this step has a password field (Workday's own
  * "create a candidate account" step for this tenant - see
  * accountCredentials.ts) and the user has saved credentials to fill it with. */
@@ -67,29 +85,38 @@ export async function runApplicationFormFill(): Promise<void> {
     return;
   }
 
+  await answerFirstOptionQuestions();
+
   const getValue = buildValueProvider(autofillResponse.data);
   const result = runFillPass(getValue);
   const comboboxResult = await runComboboxFillPass(getValue);
   const conflictOfInterestAnswered = answerConflictOfInterestQuestions();
+
+  const remainingForQa = result.unmatchedTextFields.filter(
+    (field) => !fillSkillsQuestion(field, autofillResponse.data.jdKeywords),
+  );
+  const skillsAnswered = result.unmatchedTextFields.length - remainingForQa.length;
 
   const totalFilled = result.filled + comboboxResult.filled;
   const totalGuessed = result.guessed + comboboxResult.guessed;
   showProgress(
     `${credentialsStatus}Filled ${totalFilled} field(s) confidently, ${totalGuessed} guessed (please review), ` +
       `${conflictOfInterestAnswered} screening question(s) auto-answered "No" (please review), ` +
-      `checking ${result.unmatchedTextFields.length} unmapped field(s) for saved/AI answers...`,
+      `${skillsAnswered} skills question(s) filled from the job description's keywords (please review), ` +
+      `checking ${remainingForQa.length} unmapped field(s) for saved/AI answers...`,
     55,
   );
 
-  const [attempted, fileAttachStatus] = await Promise.all([
-    runQaPass(result.unmatchedTextFields),
+  const [attempted, fileAttachStatus, coverLetterAttachStatus] = await Promise.all([
+    runQaPass(remainingForQa),
     runResumeFileAttach(),
+    runCoverLetterFileAttach(),
   ]);
-  const stillUnfilled = result.unmatched - attempted;
+  const stillUnfilled = result.unmatched - attempted - skillsAnswered;
   showProgress(
     `${credentialsStatus}Filled ${totalFilled} confidently, ${totalGuessed} guessed (please review), ` +
       `${attempted} answered via your answer bank/AI (please review), ` +
-      `${Math.max(stillUnfilled, 0)} left for you to fill in. ${fileAttachStatus} ` +
+      `${Math.max(stillUnfilled, 0)} left for you to fill in. ${fileAttachStatus} ${coverLetterAttachStatus} ` +
       `Review everything before clicking Submit yourself - FillRight never submits for you.`,
     100,
   );

@@ -3,6 +3,7 @@ import {
   deleteAnswer,
   generateCoverLetter,
   getAutofillData,
+  getCoverLetterFile,
   getDefaultResumeProfileId,
   getTailoredResumeFile,
   getWorkdayCredentials,
@@ -29,6 +30,7 @@ type BridgeMessage =
   | { type: "UPDATE_ANSWER"; answerId: string; answerText: string }
   | { type: "DELETE_ANSWER"; answerId: string }
   | { type: "GET_TAILORED_RESUME_FILE" }
+  | { type: "GET_COVER_LETTER_FILE" }
   | { type: "GET_WORKDAY_CREDENTIALS" };
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -121,6 +123,10 @@ chrome.runtime.onMessage.addListener((message: BridgeMessage, sender, sendRespon
   }
   if (message.type === "GET_TAILORED_RESUME_FILE") {
     void withSession<TailoredResumeFilePayload | null>((token) => getTailoredResumeFile(token)).then(sendResponse);
+    return true;
+  }
+  if (message.type === "GET_COVER_LETTER_FILE") {
+    void withSession<TailoredResumeFilePayload | null>((token) => getCoverLetterFile(token)).then(sendResponse);
     return true;
   }
   if (message.type === "GET_WORKDAY_CREDENTIALS") {

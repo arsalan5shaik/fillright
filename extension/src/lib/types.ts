@@ -49,6 +49,7 @@ export interface AutofillData {
   contact: ResumeContact | null;
   commonAnswers: Record<string, string>;
   jdLocation: JdLocation | null;
+  jdKeywords: string[];
 }
 
 export type GetAutofillDataMessage = { type: "GET_AUTOFILL_DATA" };
@@ -70,6 +71,7 @@ export interface TailoredResumeFilePayload {
 }
 
 export type GetTailoredResumeFileMessage = { type: "GET_TAILORED_RESUME_FILE" };
+export type GetCoverLetterFileMessage = { type: "GET_COVER_LETTER_FILE" };
 
 export interface WorkdayCredentials {
   email: string | null;
