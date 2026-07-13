@@ -40,8 +40,8 @@ async function withSession<T>(fn: (accessToken: string) => Promise<T>): Promise<
   }
 }
 
-function sendProgress(tabId: number, status: string): void {
-  chrome.tabs.sendMessage(tabId, { type: "SCAN_PROGRESS", tabId, status }).catch(() => {
+function sendProgress(tabId: number, status: string, percent: number): void {
+  chrome.tabs.sendMessage(tabId, { type: "SCAN_PROGRESS", tabId, status, percent }).catch(() => {
     // Tab may have navigated away or closed - nothing to do.
   });
 }
@@ -49,33 +49,37 @@ function sendProgress(tabId: number, status: string): void {
 async function handleScanJobPosting(posting: ScannedJobPosting, tabId: number): Promise<void> {
   const session = await getStoredSession();
   if (!session) {
-    sendProgress(tabId, "Not signed in - log into the FillRight website first.");
+    sendProgress(tabId, "Not signed in - log into the FillRight website first.", 0);
     return;
   }
 
   try {
-    sendProgress(tabId, "Analyzing job description...");
+    sendProgress(tabId, "Analyzing job description...", 15);
     const application = await analyzeJobDescription(session.access_token, posting);
 
     if (application.is_duplicate) {
-      sendProgress(tabId, "Already scanned this posting before - reusing the cached analysis.");
+      sendProgress(tabId, "Already scanned this posting before - reusing the cached analysis.", 40);
     }
 
     const resumeProfileId = await getDefaultResumeProfileId(session.access_token);
     if (!resumeProfileId) {
-      sendProgress(tabId, "No resume on file - upload one on the FillRight website first.");
+      sendProgress(tabId, "No resume on file - upload one on the FillRight website first.", 40);
       return;
     }
 
-    sendProgress(tabId, "Tailoring resume...");
-    await tailorResume(session.access_token, application.id, resumeProfileId);
+    // Cover letter generation only needs the cached JD analysis + base
+    // resume, not the tailored output, so it doesn't need to wait on
+    // tailoring to finish - running both at once cuts a real chunk off the
+    // total wait instead of doing two LLM round-trips back to back.
+    sendProgress(tabId, "Tailoring resume and writing your cover letter...", 45);
+    await Promise.all([
+      tailorResume(session.access_token, application.id, resumeProfileId),
+      generateCoverLetter(session.access_token, application.id, resumeProfileId),
+    ]);
 
-    sendProgress(tabId, "Generating cover letter...");
-    await generateCoverLetter(session.access_token, application.id, resumeProfileId);
-
-    sendProgress(tabId, "Ready - resume tailored and cover letter generated.");
+    sendProgress(tabId, "Ready - resume tailored and cover letter generated.", 100);
   } catch (err) {
-    sendProgress(tabId, `Error: ${err instanceof Error ? err.message : String(err)}`);
+    sendProgress(tabId, `Error: ${err instanceof Error ? err.message : String(err)}`, 0);
   }
 }
 

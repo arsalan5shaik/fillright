@@ -25,7 +25,7 @@ export interface AnalyzeApplicationResult {
   is_duplicate: boolean;
 }
 
-export type ScanProgressMessage = { type: "SCAN_PROGRESS"; tabId: number; status: string };
+export type ScanProgressMessage = { type: "SCAN_PROGRESS"; tabId: number; status: string; percent: number };
 
 export type ScanJobPostingMessage = { type: "SCAN_JOB_POSTING"; posting: ScannedJobPosting };
 

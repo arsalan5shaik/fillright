@@ -2,7 +2,7 @@ import type { AutofillData, TailoredResumeFilePayload } from "../../lib/types";
 import { findResumeFileInput, injectFile } from "./fileAttach";
 import { runFillPass } from "./fillEngine";
 import { runQaPass } from "./qaPass";
-import { showStatus } from "./statusUi";
+import { showProgress, showStatus } from "./statusUi";
 import { buildValueProvider } from "./valueProvider";
 
 /** Not the job-posting page (no JobPosting JSON-LD, checked by the caller)
@@ -39,7 +39,7 @@ async function runResumeFileAttach(): Promise<string> {
 }
 
 export function runApplicationFormFill(): void {
-  showStatus("Filling application form...");
+  showProgress("Filling application form...", 10);
 
   chrome.runtime.sendMessage({ type: "GET_AUTOFILL_DATA" }, (response: AutofillDataResponse | undefined) => {
     if (chrome.runtime.lastError) {
@@ -52,19 +52,21 @@ export function runApplicationFormFill(): void {
     }
 
     const result = runFillPass(buildValueProvider(response.data));
-    showStatus(
+    showProgress(
       `Filled ${result.filled} field(s) confidently, ${result.guessed} guessed (please review), ` +
         `checking ${result.unmatchedTextFields.length} unmapped field(s) for saved/AI answers...`,
+      55,
     );
 
     void Promise.all([runQaPass(result.unmatchedTextFields), runResumeFileAttach()]).then(
       ([attempted, fileAttachStatus]) => {
         const stillUnfilled = result.unmatched - attempted;
-        showStatus(
+        showProgress(
           `Filled ${result.filled} confidently, ${result.guessed} guessed (please review), ` +
             `${attempted} answered via your answer bank/AI (please review), ` +
             `${Math.max(stillUnfilled, 0)} left for you to fill in. ${fileAttachStatus} ` +
             `Review everything before clicking Submit yourself - FillRight never submits for you.`,
+          100,
         );
       },
     );
