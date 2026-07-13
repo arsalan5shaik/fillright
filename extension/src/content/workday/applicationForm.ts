@@ -5,6 +5,7 @@ import { findCoverLetterFileInput, findResumeFileInput, injectFile } from "./fil
 import { runComboboxFillPass, runFillPass } from "./fillEngine";
 import { answerFirstOptionQuestions } from "./firstOptionQuestions";
 import { runQaPass } from "./qaPass";
+import { fillEducationSection, fillWebsitesSection, fillWorkExperienceSection, type WebsiteEntry } from "./repeatableSections";
 import { fillSkillsQuestion } from "./skillsQuestion";
 import { showProgress, showStatus } from "./statusUi";
 import { buildValueProvider } from "./valueProvider";
@@ -87,6 +88,20 @@ export async function runApplicationFormFill(): Promise<void> {
 
   await answerFirstOptionQuestions();
 
+  const websiteEntries: WebsiteEntry[] = (
+    [
+      { label: "LinkedIn", url: autofillResponse.data.profileFields.linkedin_url },
+      { label: "Portfolio", url: autofillResponse.data.profileFields.portfolio_url },
+      { label: "GitHub", url: autofillResponse.data.profileFields.github_url },
+    ] as { label: string; url: string | undefined }[]
+  ).filter((entry): entry is WebsiteEntry => Boolean(entry.url));
+
+  const [workExperienceFilled, educationFilled, websitesFilled] = await Promise.all([
+    fillWorkExperienceSection(autofillResponse.data.workExperience),
+    fillEducationSection(autofillResponse.data.education),
+    fillWebsitesSection(websiteEntries),
+  ]);
+
   const getValue = buildValueProvider(autofillResponse.data);
   const result = runFillPass(getValue);
   const comboboxResult = await runComboboxFillPass(getValue);
@@ -101,6 +116,7 @@ export async function runApplicationFormFill(): Promise<void> {
   const totalGuessed = result.guessed + comboboxResult.guessed;
   showProgress(
     `${credentialsStatus}Filled ${totalFilled} field(s) confidently, ${totalGuessed} guessed (please review), ` +
+      `${workExperienceFilled} work experience / ${educationFilled} education / ${websitesFilled} website entries added, ` +
       `${conflictOfInterestAnswered} screening question(s) auto-answered "No" (please review), ` +
       `${skillsAnswered} skills question(s) filled from the job description's keywords (please review), ` +
       `checking ${remainingForQa.length} unmapped field(s) for saved/AI answers...`,
