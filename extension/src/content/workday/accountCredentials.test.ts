@@ -99,4 +99,59 @@ describe("account creation field detection", () => {
     expect((document.getElementById("pw") as HTMLInputElement).value).toBe("SavedPassword123");
     expect((document.getElementById("pw2") as HTMLInputElement).value).toBe("SavedPassword123");
   });
+
+  it("checks the 'I agree to create an account' consent checkbox", () => {
+    document.body.innerHTML = `
+      <label for="acct-email">Email</label>
+      <input id="acct-email" type="email" />
+      <label for="pw">Password</label>
+      <input id="pw" type="password" />
+      <label for="consent">
+        <input id="consent" type="checkbox" />
+        I agree to create an account and submit my work information.
+      </label>
+    `;
+    markVisible();
+
+    const filled = fillAccountCreationFields("me@example.invalid", "SavedPassword123");
+
+    expect(filled).toBe(true);
+    expect((document.getElementById("consent") as HTMLInputElement).checked).toBe(true);
+  });
+
+  it("does not uncheck a consent checkbox the user already checked", () => {
+    document.body.innerHTML = `
+      <label for="acct-email">Email</label>
+      <input id="acct-email" type="email" />
+      <label for="pw">Password</label>
+      <input id="pw" type="password" />
+      <label for="consent">
+        <input id="consent" type="checkbox" checked />
+        I agree to create an account and submit my work information.
+      </label>
+    `;
+    markVisible();
+
+    fillAccountCreationFields("me@example.invalid", "SavedPassword123");
+
+    expect((document.getElementById("consent") as HTMLInputElement).checked).toBe(true);
+  });
+
+  it("does not check an unrelated checkbox on the same step", () => {
+    document.body.innerHTML = `
+      <label for="acct-email">Email</label>
+      <input id="acct-email" type="email" />
+      <label for="pw">Password</label>
+      <input id="pw" type="password" />
+      <label for="newsletter">
+        <input id="newsletter" type="checkbox" />
+        Subscribe me to job alerts and newsletters.
+      </label>
+    `;
+    markVisible();
+
+    fillAccountCreationFields("me@example.invalid", "SavedPassword123");
+
+    expect((document.getElementById("newsletter") as HTMLInputElement).checked).toBe(false);
+  });
 });

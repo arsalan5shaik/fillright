@@ -16,6 +16,20 @@ function findEmptyPasswordInputs(): HTMLInputElement[] {
   );
 }
 
+/** The "I agree to create an account and submit my work information"
+ * consent checkbox that gates the Create Account button on this step -
+ * matched narrowly on its own wording so this never touches an unrelated
+ * checkbox (EEO consent, newsletter opt-in, etc.) elsewhere in the form. */
+function findAccountCreationConsentCheckbox(): HTMLInputElement | null {
+  return (
+    Array.from(document.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')).find((el) => {
+      if (!isVisible(el) || el.checked) return false;
+      const label = getAssociatedLabelText(el);
+      return label !== null && /agree.{0,40}create an account/i.test(label);
+    }) ?? null
+  );
+}
+
 export function findAccountCreationFields(): { emailInput: HTMLInputElement | null; passwordInputs: HTMLInputElement[] } | null {
   const passwordInputs = findEmptyPasswordInputs();
   if (passwordInputs.length === 0) return null;
@@ -57,6 +71,16 @@ export function fillAccountCreationFields(email: string, password: string): bool
     if (remaining.length === 0) break;
     setFieldValue(remaining[0], password);
     markField(remaining[0], "high");
+    filled = true;
+  }
+
+  // Queried fresh here, after email/password are already filled, for the
+  // same reason those are re-queried between fills - a re-render triggered
+  // by the earlier fills could otherwise leave a captured reference stale.
+  const consentCheckbox = findAccountCreationConsentCheckbox();
+  if (consentCheckbox) {
+    consentCheckbox.click();
+    markField(consentCheckbox, "high");
     filled = true;
   }
 
