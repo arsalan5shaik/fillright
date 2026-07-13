@@ -64,4 +64,39 @@ describe("account creation field detection", () => {
     markVisible();
     expect(findAccountCreationFields()).toBeNull();
   });
+
+  it("still fills the password fields if setting email replaces them with new DOM nodes (simulates a framework re-render)", () => {
+    document.body.innerHTML = `
+      <label for="acct-email">Email</label>
+      <input id="acct-email" type="email" />
+      <div id="password-container">
+        <label for="pw">Password</label>
+        <input id="pw" type="password" />
+        <label for="pw2">Confirm Password</label>
+        <input id="pw2" type="password" />
+      </div>
+    `;
+    markVisible();
+
+    const container = document.getElementById("password-container")!;
+    document.getElementById("acct-email")!.addEventListener(
+      "input",
+      () => {
+        container.innerHTML = `
+          <label for="pw">Password</label>
+          <input id="pw" type="password" />
+          <label for="pw2">Confirm Password</label>
+          <input id="pw2" type="password" />
+        `;
+        markVisible();
+      },
+      { once: true },
+    );
+
+    const filled = fillAccountCreationFields("me@example.invalid", "SavedPassword123");
+
+    expect(filled).toBe(true);
+    expect((document.getElementById("pw") as HTMLInputElement).value).toBe("SavedPassword123");
+    expect((document.getElementById("pw2") as HTMLInputElement).value).toBe("SavedPassword123");
+  });
 });
