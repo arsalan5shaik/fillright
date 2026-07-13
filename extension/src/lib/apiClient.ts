@@ -6,7 +6,6 @@ import type {
   ResolvedAnswer,
   ResumeContact,
   ScannedJobPosting,
-  WorkdayCredentials,
   WorkExperienceEntry,
 } from "./types";
 
@@ -320,10 +319,4 @@ export async function getCoverLetterFile(accessToken: string): Promise<TailoredR
   const blob = await pdfRes.blob();
   const filename = contact?.full_name ? `${slugifyFilename(contact.full_name)}_cover_letter.pdf` : "cover_letter.pdf";
   return { blob, filename };
-}
-
-export async function getWorkdayCredentials(accessToken: string): Promise<WorkdayCredentials> {
-  const res = await apiFetch(accessToken, "/profile/workday-credentials");
-  if (!res.ok) throw new Error(`workday-credentials failed: ${res.status} ${await res.text()}`);
-  return res.json();
 }

@@ -1,5 +1,5 @@
-import type { AutofillData, TailoredResumeFilePayload, WorkdayCredentials } from "../../lib/types";
-import { fillAccountCreationFields, findAccountCreationFields } from "./accountCredentials";
+import type { AutofillData, TailoredResumeFilePayload } from "../../lib/types";
+import { checkAccountCreationConsent, hasAccountCreationStep } from "./accountCredentials";
 import { answerConflictOfInterestQuestions } from "./booleanScreeningQuestions";
 import { findCoverLetterFileInput, findResumeFileInput, injectFile } from "./fileAttach";
 import { runComboboxFillPass, runFillPass } from "./fillEngine";
@@ -20,12 +20,11 @@ import { buildValueProvider } from "./valueProvider";
  * live tenant (see Milestone 13 notes). Runs harmlessly on the Review step
  * too - it just won't find any empty fields to fill there. */
 export function looksLikeApplicationForm(): boolean {
-  return document.querySelectorAll("input, select, textarea").length >= 3 || findAccountCreationFields() !== null;
+  return document.querySelectorAll("input, select, textarea").length >= 3 || hasAccountCreationStep();
 }
 
 type AutofillDataResponse = { ok: true; data: AutofillData } | { ok: false; error: string };
 type TailoredResumeFileResponse = { ok: true; data: TailoredResumeFilePayload | null } | { ok: false; error: string };
-type WorkdayCredentialsResponse = { ok: true; data: WorkdayCredentials } | { ok: false; error: string };
 
 function sendMessage<T>(message: unknown): Promise<T> {
   return new Promise((resolve) => chrome.runtime.sendMessage(message, resolve));
@@ -63,20 +62,20 @@ async function runCoverLetterFileAttach(): Promise<string> {
   return `Attached your cover letter (${response.data.filename}).`;
 }
 
-/** No-op unless this step has a password field (Workday's own
- * "create a candidate account" step for this tenant - see
- * accountCredentials.ts) and the user has saved credentials to fill it with. */
-async function runAccountCredentialsFill(): Promise<string> {
-  const response = await sendMessage<WorkdayCredentialsResponse>({ type: "GET_WORKDAY_CREDENTIALS" });
-  if (!response || !response.ok || !response.data.email || !response.data.password) return "";
-
-  const filled = fillAccountCreationFields(response.data.email, response.data.password);
-  return filled ? "Filled your saved Workday account email/password. " : "";
+/** Email/password on Workday's account-creation step are no longer
+ * autofilled - Workday's invisible-reCAPTCHA-style click_filter/
+ * noCaptchaWrapper on the Create Account button never accepted
+ * programmatically-set values as genuine, confirmed live even after
+ * switching to per-character keystroke simulation. The user types those
+ * two fields by hand; the consent checkbox isn't gated the same way, so
+ * that's still checked automatically. */
+function runAccountCreationConsent(): string {
+  return checkAccountCreationConsent() ? "Checked the account-creation consent box. " : "";
 }
 
 export async function runApplicationFormFill(): Promise<void> {
   showProgress("Checking for a Workday account-creation step...", 5);
-  const credentialsStatus = await runAccountCredentialsFill();
+  const credentialsStatus = runAccountCreationConsent();
 
   showProgress(`${credentialsStatus}Filling application form...`, 15);
 
