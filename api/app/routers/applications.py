@@ -62,12 +62,17 @@ def analyze_jd(body: AnalyzeJDRequest, user: CurrentUser = Depends(get_current_u
             "keyword_extraction",
             "Analyze the following job description and extract structured data: a "
             "ranked list of skill/technology keywords, each marked required=true if "
-            "the JD treats it as a must-have or required=false if it's nice-to-have; "
-            "the seniority level (e.g. Senior, Mid, Entry, Staff) if stated or clearly "
-            "implied; every distinct work location mentioned (city/state/country and "
-            "whether remote/hybrid/onsite); employment type; and any travel or "
-            "security clearance requirements. Leave fields empty/null rather than "
-            "guessing if the JD doesn't specify them.\n\n" + body.jd_text,
+            "the JD treats it as a must-have or required=false if it's nice-to-have. "
+            "Each keyword MUST be a short skill or technology name of at most 4 words "
+            "(e.g. 'Python', 'AWS', 'Kubernetes', 'financial modeling', 'REST APIs') - "
+            "never a full sentence, responsibility, or requirement phrase. Break a "
+            "compound requirement into its individual skills rather than copying the "
+            "sentence. Also extract: the seniority level (e.g. Senior, Mid, Entry, "
+            "Staff) if stated or clearly implied; every distinct work location "
+            "mentioned (city/state/country and whether remote/hybrid/onsite); "
+            "employment type; and any travel or security clearance requirements. "
+            "Leave fields empty/null rather than guessing if the JD doesn't specify "
+            "them.\n\n" + body.jd_text,
             JDAnalysis,
             user_id=user.id,
         )
@@ -157,11 +162,17 @@ def tailor_resume_endpoint(
 ) -> TailorResumeResponse:
     with user_scoped_client(user.access_token) as client:
         app_row, source, resume_profile_id = _load_application_and_resume(
-            client, application_id, body.resume_profile_id
+            client, application_id, body.resume_profile_id, extra_app_fields=",company,job_title"
         )
         jd_analysis = JDAnalysis(**app_row["jd_analysis_json"])
 
-        tailored = tailor_resume(source, jd_analysis, user_id=user.id)
+        tailored = tailor_resume(
+            source,
+            jd_analysis,
+            company=app_row.get("company") or "the company",
+            job_title=app_row.get("job_title"),
+            user_id=user.id,
+        )
         pdf_bytes = render_resume_pdf(tailored)
 
         storage_path = f"{user.id}/{application_id}.pdf"

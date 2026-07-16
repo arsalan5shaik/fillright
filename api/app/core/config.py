@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     resume_parsing_model: str = "openai:gpt-5-nano"
     keyword_extraction_model: str = "openai:gpt-5-nano"
     resume_tailoring_model: str = "openai:gpt-5-nano"
+    resume_critique_model: str = "openai:gpt-5-nano"
     cover_letter_model: str = "openai:gpt-5-nano"
     qa_resolver_model: str = "google:gemini-3.1-flash-lite"
     embedding_model: str = "openai:text-embedding-3-small"
