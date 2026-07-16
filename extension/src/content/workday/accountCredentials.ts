@@ -16,17 +16,28 @@ export function hasAccountCreationStep(): boolean {
   );
 }
 
-/** The "I agree to create an account and submit my work information"
- * consent checkbox that gates the Create Account button on this step -
- * matched narrowly on its own wording so this never touches an unrelated
- * checkbox (EEO consent, newsletter opt-in, etc.) elsewhere in the form.
- * Unaffected by the email/password issue above - a plain checkbox .click()
- * isn't gated behind the same click_filter/reCAPTCHA-style validation. */
+/** Workday's create-account / sign-in step, detected robustly (even after
+ * the user has typed their password, so it doesn't flip to false mid-way):
+ * the createAccountSubmitButton automation-id (confirmed live) or any visible
+ * password field. On this step the extension must stay hands-off - see
+ * runApplicationFormFill for why the full fill pass here breaks the reCAPTCHA-
+ * gated Create Account button. */
+export function isAuthStep(): boolean {
+  if (document.querySelector('[data-automation-id="createAccountSubmitButton"]')) return true;
+  return Array.from(document.querySelectorAll<HTMLInputElement>('input[type="password"]')).some(isVisible);
+}
+
+/** The consent checkbox that gates the Create Account button. Broadened
+ * beyond the old "agree … create an account" wording to also catch tenants
+ * whose text is e.g. "I have read the notice and consent to the terms" -
+ * safe because this is only invoked on the auth step (see runApplicationFormFill),
+ * where the sole checkbox is this consent box. A plain checkbox .click() isn't
+ * gated behind the reCAPTCHA-style validation the way the submit button is. */
 export function checkAccountCreationConsent(): boolean {
   const checkbox = Array.from(document.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')).find((el) => {
     if (!isVisible(el) || el.checked) return false;
     const label = getAssociatedLabelText(el);
-    return label !== null && /agree.{0,40}create an account/i.test(label);
+    return label !== null && /\b(agree|consent|acknowledge|i have read)\b/i.test(label);
   });
   if (!checkbox) return false;
 

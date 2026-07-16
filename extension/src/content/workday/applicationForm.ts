@@ -1,5 +1,5 @@
 import type { AutofillData, TailoredResumeFilePayload } from "../../lib/types";
-import { checkAccountCreationConsent, hasAccountCreationStep } from "./accountCredentials";
+import { checkAccountCreationConsent, hasAccountCreationStep, isAuthStep } from "./accountCredentials";
 import { answerConflictOfInterestQuestions } from "./booleanScreeningQuestions";
 import { findCoverLetterFileInput, findResumeFileInput, injectFile } from "./fileAttach";
 import { runComboboxFillPass, runFillPass, type ValueProvider } from "./fillEngine";
@@ -46,7 +46,7 @@ export function isWizardStep(): boolean {
   return (
     document.querySelector('[data-automation-id^="applyFlow"]') !== null ||
     document.querySelector('[data-automation-id="add-button"]') !== null ||
-    hasAccountCreationStep()
+    isAuthStep()
   );
 }
 
@@ -89,22 +89,26 @@ async function runCoverLetterFileAttach(): Promise<string> {
   return `Attached your cover letter (${response.data.filename}).`;
 }
 
-/** Email/password on Workday's account-creation step are no longer
- * autofilled - Workday's invisible-reCAPTCHA-style click_filter/
- * noCaptchaWrapper on the Create Account button never accepted
- * programmatically-set values as genuine, confirmed live even after
- * switching to per-character keystroke simulation. The user types those
- * two fields by hand; the consent checkbox isn't gated the same way, so
- * that's still checked automatically. */
-function runAccountCreationConsent(): string {
-  return checkAccountCreationConsent() ? "Checked the account-creation consent box. " : "";
-}
-
 export async function runApplicationFormFill(): Promise<void> {
-  showProgress("Checking for a Workday account-creation step...", 5);
-  const credentialsStatus = runAccountCreationConsent();
+  // Create-account / sign-in step: stay almost entirely hands-off. There is
+  // nothing here for FillRight to fill - email/password are user-typed - and
+  // running the full fill pass (repeatable-section polling, combobox/date
+  // probing, MutationObserver churn, dispatched events) degrades the
+  // reCAPTCHA score behind Workday's click_filter/noCaptchaWrapper overlay on
+  // the Create Account button, which then silently refuses to submit.
+  // Confirmed regression: the button worked until the fill pass was widened
+  // to run on this step. The only automated touch is best-effort ticking the
+  // consent box (a plain checkbox click, not reCAPTCHA-gated).
+  if (isAuthStep()) {
+    const consent = checkAccountCreationConsent();
+    showStatus(
+      `${consent ? "Checked the consent box. " : ""}Enter your email and password, then click ` +
+        `Create Account / Sign In yourself.`,
+    );
+    return;
+  }
 
-  showProgress(`${credentialsStatus}Filling application form...`, 15);
+  showProgress("Filling application form...", 15);
 
   const autofillResponse = await sendMessage<AutofillDataResponse>({ type: "GET_AUTOFILL_DATA" });
   if (!autofillResponse || !autofillResponse.ok) {
@@ -160,7 +164,7 @@ export async function runApplicationFormFill(): Promise<void> {
   const totalFilled = result.filled + comboboxResult.filled;
   const totalGuessed = result.guessed + comboboxResult.guessed;
   showProgress(
-    `${credentialsStatus}Filled ${totalFilled} field(s) confidently, ${totalGuessed} guessed (please review), ` +
+    `Filled ${totalFilled} field(s) confidently, ${totalGuessed} guessed (please review), ` +
       `${workExperienceFilled} work experience / ${educationFilled} education / ${websitesFilled} website entries added, ` +
       `${conflictOfInterestAnswered} screening question(s) auto-answered "No" (please review), ` +
       `${skillsAnswered} skills question(s) filled from the job description's keywords (please review), ` +
@@ -175,7 +179,7 @@ export async function runApplicationFormFill(): Promise<void> {
   ]);
   const stillUnfilled = result.unmatched - attempted - skillsAnswered;
   showProgress(
-    `${credentialsStatus}Filled ${totalFilled} confidently, ${totalGuessed} guessed (please review), ` +
+    `Filled ${totalFilled} confidently, ${totalGuessed} guessed (please review), ` +
       `${attempted} answered via your answer bank/AI (please review), ` +
       `${Math.max(stillUnfilled, 0)} left for you to fill in. ${fileAttachStatus} ${coverLetterAttachStatus} ` +
       `Review everything before clicking Submit yourself - FillRight never submits for you.`,

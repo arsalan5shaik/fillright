@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { checkAccountCreationConsent, hasAccountCreationStep } from "./accountCredentials";
+import { checkAccountCreationConsent, hasAccountCreationStep, isAuthStep } from "./accountCredentials";
 
 function markVisible(): void {
   for (const el of document.querySelectorAll("input")) {
@@ -34,7 +34,39 @@ describe("hasAccountCreationStep", () => {
   });
 });
 
+describe("isAuthStep", () => {
+  it("is true even after the user has typed their password (doesn't flip to false mid-way)", () => {
+    document.body.innerHTML = `<input id="pw" type="password" value="MyTypedPassword1!" />`;
+    markVisible();
+    expect(isAuthStep()).toBe(true);
+  });
+
+  it("is true when Workday's createAccountSubmitButton is present", () => {
+    document.body.innerHTML = `<button data-automation-id="createAccountSubmitButton">Create Account</button>`;
+    expect(isAuthStep()).toBe(true);
+  });
+
+  it("is false on a normal wizard step with no password / create-account button", () => {
+    document.body.innerHTML = `<input type="text" /><input type="text" />`;
+    markVisible();
+    expect(isAuthStep()).toBe(false);
+  });
+});
+
 describe("checkAccountCreationConsent", () => {
+  it("checks a 'I have read the notice and consent to the terms' checkbox (broadened wording)", () => {
+    document.body.innerHTML = `
+      <label for="consent2">
+        <input id="consent2" type="checkbox" />
+        I have read the notice and consent to the terms and conditions.
+      </label>
+    `;
+    markVisible();
+
+    expect(checkAccountCreationConsent()).toBe(true);
+    expect((document.getElementById("consent2") as HTMLInputElement).checked).toBe(true);
+  });
+
   it("checks the 'I agree to create an account' consent checkbox", () => {
     document.body.innerHTML = `
       <label for="consent">
