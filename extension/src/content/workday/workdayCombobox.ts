@@ -50,6 +50,15 @@ function findVisibleOptionMatching(candidates: string[]): HTMLElement | null {
     const prefix = options.find((opt) => opt.textContent?.trim().toLowerCase().startsWith(target));
     if (prefix) return prefix;
   }
+  // ...then a contains match, but only for multi-word candidates so a short
+  // token can't match unrelated options. Confirmed needed live: a Workday
+  // degree option reads "B.S. - Bachelor of Science", which neither an exact
+  // nor a prefix match on "Bachelor of Science" catches, but a contains does.
+  for (const target of normalized) {
+    if (!target.includes(" ")) continue;
+    const contains = options.find((opt) => opt.textContent?.trim().toLowerCase().includes(target));
+    if (contains) return contains;
+  }
   return null;
 }
 

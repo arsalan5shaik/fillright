@@ -89,70 +89,93 @@ function isPresentDate(raw: string | null | undefined): boolean {
   return !!raw && /present|current|now|ongoing/i.test(raw);
 }
 
-/** The field wrapper around a labelled control - Workday nests each control
- * inside a `data-automation-id="formField-…"` div; falls back to the label's
- * parent when that convention isn't present. */
-function findFieldGroupByLabel(panel: HTMLElement, labelPattern: RegExp): HTMLElement | null {
-  const labelEl = Array.from(panel.querySelectorAll<HTMLElement>("label, legend")).find((el) =>
-    labelPattern.test(el.textContent?.trim() ?? ""),
-  );
-  if (!labelEl) return null;
-  return labelEl.closest<HTMLElement>('[data-automation-id^="formField"]') ?? labelEl.parentElement;
-}
+const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
 
-/** Workday renders a date as segmented spinbutton inputs (MM / YYYY) rather
- * than one text field; this finds the month or year sub-input within a date
- * field group by its automation-id / aria-label / placeholder. */
-function findDateSubInput(group: HTMLElement, kind: "month" | "year"): HTMLInputElement | null {
-  const inputs = Array.from(group.querySelectorAll<HTMLInputElement>("input"));
-  return (
-    inputs.find((el) => {
-      const hay = `${el.getAttribute("data-automation-id") ?? ""} ${el.getAttribute("aria-label") ?? ""} ${
-        el.getAttribute("placeholder") ?? ""
-      }`.toLowerCase();
-      return kind === "month" ? /month|\bmm\b/.test(hay) : /year|\byyyy\b/.test(hay);
-    }) ?? null
-  );
-}
-
-/** Fills Workday's segmented MM/YYYY date widget for the From/To field whose
- * label matches `labelPattern`. Best-effort against Workday's known date
- * spinbutton conventions; returns false (so the caller can fall back to a
- * plain text fill) if this doesn't look like a spinbutton date widget.
- * NOTE: unverified against this tenant's live date-field HTML - the segmented
- * MM/YYYY structure is a standard Workday component but the exact
- * automation-ids may need one round of live confirmation. */
-function fillScopedDate(panel: HTMLElement, labelPattern: RegExp, dateStr: string | null | undefined): boolean {
-  if (!dateStr) return false;
-  const parsed = parseMonthYear(dateStr);
-  if (!parsed) return false;
-
-  const group = findFieldGroupByLabel(panel, labelPattern);
-  if (!group) return false;
-
-  const yearInput = findDateSubInput(group, "year");
-  if (!yearInput) return false; // not a segmented date widget - let the caller try a text fill
-
-  let did = false;
-  const monthInput = findDateSubInput(group, "month");
-  if (monthInput && parsed.month !== null && monthInput.value.trim() === "") {
-    setFieldValue(monthInput, String(parsed.month));
-    markField(monthInput, "high");
-    did = true;
+/** Workday's date sections are role="spinbutton" inputs that manage their own
+ * value from keystrokes - plain value-setting (setFieldValue) doesn't update
+ * their display or clear the "required" error. This simulates typing each
+ * digit (keydown + native value set + input + keyup) so the widget registers
+ * the change, matching how a real user fills it. */
+function typeIntoSpinbutton(input: HTMLInputElement, text: string): void {
+  input.focus();
+  let acc = "";
+  for (const ch of text) {
+    acc += ch;
+    const init: KeyboardEventInit = { key: ch, code: `Digit${ch}`, bubbles: true, cancelable: true };
+    input.dispatchEvent(new KeyboardEvent("keydown", init));
+    if (nativeInputValueSetter) {
+      nativeInputValueSetter.call(input, acc);
+    } else {
+      input.value = acc;
+    }
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new KeyboardEvent("keyup", init));
   }
-  if (yearInput.value.trim() === "") {
-    setFieldValue(yearInput, String(parsed.year));
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+  input.dispatchEvent(new Event("blur", { bubbles: true }));
+}
+
+/** Text describing a date field group (its formField automation-id + label),
+ * used to tell a From/start section apart from a To/end section. */
+function dateGroupContext(group: HTMLElement): string {
+  const aid = group.getAttribute("data-automation-id") ?? "";
+  const label = group.querySelector("label, legend")?.textContent ?? "";
+  const labelledBy = (group.getAttribute("aria-labelledby") ?? "")
+    .split(/\s+/)
+    .map((id) => document.getElementById(id)?.textContent ?? "")
+    .join(" ");
+  return `${aid} ${label} ${labelledBy}`.toLowerCase();
+}
+
+/** Fills Workday's segmented date widgets in a panel - confirmed from live
+ * DOM: inputs with data-automation-id "dateSectionMonth-input" /
+ * "dateSectionYear-input" (role="spinbutton"), each inside a
+ * "formField-startDate" / "formField-endDate" wrapper. Locates each date
+ * field's year input, decides start vs end from its wrapper's context, and
+ * fills via simulated typing. For an ongoing role (Present) it checks
+ * "I currently work here" instead of filling the end date. */
+function fillPanelDates(
+  panel: HTMLElement,
+  startDate: string | null | undefined,
+  endDate: string | null | undefined,
+  endIsPresent: boolean,
+): void {
+  const yearInputs = Array.from(
+    panel.querySelectorAll<HTMLInputElement>('input[data-automation-id="dateSectionYear-input"]'),
+  );
+  for (const yearInput of yearInputs) {
+    if (yearInput.value.trim() !== "") continue;
+    const group =
+      yearInput.closest<HTMLElement>('[data-automation-id^="formField"]') ?? yearInput.closest<HTMLElement>('[role="group"]');
+    const context = group ? dateGroupContext(group) : "";
+
+    let dateStr: string | null | undefined;
+    let isEnd = false;
+    if (/start|from|first/.test(context)) {
+      dateStr = startDate;
+    } else if (/end|\bto\b|actual|expected|last/.test(context)) {
+      isEnd = true;
+      dateStr = endDate;
+    } else {
+      continue; // can't confidently tell which date this is - leave it
+    }
+
+    if (isEnd && endIsPresent) {
+      markCurrentlyWorkHere(panel);
+      continue;
+    }
+
+    const parsed = dateStr ? parseMonthYear(dateStr) : null;
+    if (!parsed) continue;
+
+    const monthInput = group?.querySelector<HTMLInputElement>('input[data-automation-id="dateSectionMonth-input"]');
+    if (monthInput && parsed.month !== null && monthInput.value.trim() === "") {
+      typeIntoSpinbutton(monthInput, String(parsed.month).padStart(2, "0"));
+      markField(monthInput, "high");
+    }
+    typeIntoSpinbutton(yearInput, String(parsed.year));
     markField(yearInput, "high");
-    did = true;
   }
-  return did;
-}
-
-/** Date fill with a text fallback: try the segmented widget first, else a
- * plain text field with the same label (some tenants/fields use a text
- * date). */
-function fillDateField(panel: HTMLElement, labelPattern: RegExp, dateStr: string | null | undefined): boolean {
-  return fillScopedDate(panel, labelPattern, dateStr) || fillScopedField(panel, labelPattern, dateStr);
 }
 
 /** Checks the panel's "I currently work here" box instead of filling an end
@@ -268,12 +291,7 @@ export async function fillWorkExperienceSection(entries: WorkExperienceEntry[]):
   return addEntriesAndFill(/^work experience$/i, entries, async (panel, entry) => {
     fillScopedField(panel, /company|employer/i, entry.company);
     fillScopedField(panel, /job title|\btitle\b/i, entry.title);
-    fillDateField(panel, /^from$|start date/i, entry.start_date);
-    if (isPresentDate(entry.end_date)) {
-      markCurrentlyWorkHere(panel);
-    } else {
-      fillDateField(panel, /^to$|end date/i, entry.end_date);
-    }
+    fillPanelDates(panel, entry.start_date, entry.end_date, isPresentDate(entry.end_date));
     await fillScopedLocation(panel, entry.location);
     fillScopedField(panel, /role description|description|responsibilities/i, entry.bullets.join("\n"));
   });
@@ -284,8 +302,7 @@ export async function fillEducationSection(entries: EducationEntry[]): Promise<n
     fillScopedField(panel, /school|institution|university/i, entry.institution);
     await fillScopedDegree(panel, entry.degree);
     fillScopedField(panel, /field of study|major/i, entry.field_of_study);
-    fillDateField(panel, /^from$|start date/i, entry.start_date);
-    fillDateField(panel, /^to|end date|actual or expected/i, entry.end_date);
+    fillPanelDates(panel, entry.start_date, entry.end_date, false);
   });
 }
 

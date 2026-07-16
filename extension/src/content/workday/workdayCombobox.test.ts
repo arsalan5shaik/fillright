@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isComboboxEmpty, isWorkdayComboboxTrigger, setWorkdayComboboxValue } from "./workdayCombobox";
+import { isComboboxEmpty, isWorkdayComboboxTrigger, selectComboboxOption, setWorkdayComboboxValue } from "./workdayCombobox";
 
 function markVisible(): void {
   for (const el of document.querySelectorAll("input, button, li")) {
@@ -79,5 +79,37 @@ describe("setWorkdayComboboxValue", () => {
     const button = buildWidget();
     const result = await setWorkdayComboboxValue(button, "Nowhereland");
     expect(result).toBe(false);
+  });
+});
+
+describe("selectComboboxOption (degree-style contains match)", () => {
+  it("picks 'B.S. - Bachelor of Science' from a 'Bachelor of Science' candidate", async () => {
+    document.body.innerHTML = `
+      <div>
+        <button aria-haspopup="listbox" type="button" id="degree">Select One</button>
+        <input type="text" id="filter" />
+      </div>
+      <ul role="listbox">
+        <li role="option">A.A. - Associate of Arts</li>
+        <li role="option">B.S. - Bachelor of Science</li>
+        <li role="option">M.S. - Master of Science</li>
+      </ul>
+    `;
+    markVisible();
+
+    const button = document.getElementById("degree") as HTMLButtonElement;
+    let clicked = "";
+    document.querySelectorAll('[role="option"]').forEach((opt) => {
+      opt.addEventListener("click", () => (clicked = opt.textContent ?? ""));
+    });
+
+    const result = await selectComboboxOption(
+      button,
+      ["Bachelor's Degree", "Bachelor of Science", "Bachelor"],
+      "Bachelor",
+    );
+
+    expect(result).toBe(true);
+    expect(clicked).toBe("B.S. - Bachelor of Science");
   });
 });

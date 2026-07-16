@@ -40,9 +40,21 @@ function findLabeledFileInput(pattern: RegExp): HTMLInputElement | null {
  * when there's exactly one and it isn't labeled as the cover-letter slot
  * (the common single-upload case); with multiple unlabeled/ambiguous
  * inputs, this doesn't guess which one is the resume. */
+function isWorkdayUploadInput(el: HTMLInputElement): boolean {
+  return (el.getAttribute("data-automation-id") ?? "").startsWith("file-upload-input");
+}
+
 export function findResumeFileInput(): HTMLInputElement | null {
   const labeled = findLabeledFileInput(/resume|\bcv\b/i);
   if (labeled) return labeled;
+
+  // Workday's résumé upload input is data-automation-id="file-upload-input-…"
+  // inside a "file-upload-drop-zone" (confirmed live). Prefer that, excluding
+  // any that sit in a cover-letter section.
+  const resumeUploads = candidateFileInputs().filter(
+    (el) => isWorkdayUploadInput(el) && !/cover letter/i.test(fileInputContextText(el)),
+  );
+  if (resumeUploads.length === 1) return resumeUploads[0];
 
   const inputs = candidateFileInputs();
   const hasCoverLetterSlot = inputs.some((el) => /cover letter/i.test(fileInputContextText(el)));
