@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import ProfileFieldsForm from "./ProfileFieldsForm";
@@ -44,21 +43,28 @@ export default async function ProfilePage() {
     : { email: null, password: null };
 
   return (
-    <main style={{ padding: 24, maxWidth: 480 }}>
-      <p>
-        <Link href="/">Back home</Link>
-      </p>
+    <main>
       <h1>Profile</h1>
-      <p>Contact details used to autofill Workday&apos;s &quot;My Information&quot; step.</p>
-      <ProfileFieldsForm initialValues={initial} />
+      <p className="muted">Details FillRight uses to autofill applications.</p>
 
-      <h2 style={{ marginTop: 32 }}>Workday account credentials</h2>
-      <p>
-        Workday requires a separate candidate account per employer. Save one email/password here to reuse across
-        every application instead of inventing a new one each time. Stored encrypted; reusing one password across
-        many external accounts is a real tradeoff you&apos;re accepting for convenience.
-      </p>
-      <WorkdayCredentialsForm initialEmail={workdayCredentials.email ?? ""} initialPassword={workdayCredentials.password ?? ""} />
+      <div className="card" style={{ marginTop: 24 }}>
+        <h2>Contact details</h2>
+        <p className="card-muted">Used to autofill Workday&apos;s &quot;My Information&quot; step.</p>
+        <ProfileFieldsForm initialValues={initial} />
+      </div>
+
+      <div className="card">
+        <h2>Workday account credentials</h2>
+        <p className="card-muted">
+          Workday requires a separate candidate account per employer. Save one email/password here to reuse across
+          every application instead of inventing a new one each time. Stored encrypted; reusing one password across
+          many external accounts is a real tradeoff you&apos;re accepting for convenience.
+        </p>
+        <WorkdayCredentialsForm
+          initialEmail={workdayCredentials.email ?? ""}
+          initialPassword={workdayCredentials.password ?? ""}
+        />
+      </div>
     </main>
   );
 }
