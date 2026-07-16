@@ -13,7 +13,11 @@ export type FieldConcept =
   | "portfolio_url"
   | "location_preference"
   | "work_authorization"
-  | "sponsorship";
+  | "sponsorship"
+  | "years_experience"
+  | "desired_salary"
+  | "willing_to_relocate"
+  | "available_start_date";
 
 interface FieldConceptDef {
   concept: FieldConcept;
@@ -59,6 +63,27 @@ export const FIELD_CONCEPTS: FieldConceptDef[] = [
   },
   { concept: "work_authorization", automationIdHints: [], labelKeywords: ["authorized to work", "legally authorized"] },
   { concept: "sponsorship", automationIdHints: [], labelKeywords: ["sponsorship", "require a visa", "require visa"] },
+  // Job-preference fields (saved on the website's Job preferences card).
+  {
+    concept: "years_experience",
+    automationIdHints: [],
+    labelKeywords: ["years of experience", "years of relevant experience", "total years", "how many years"],
+  },
+  {
+    concept: "desired_salary",
+    automationIdHints: [],
+    labelKeywords: ["desired salary", "salary expectation", "expected salary", "desired compensation", "salary requirement"],
+  },
+  {
+    concept: "willing_to_relocate",
+    automationIdHints: [],
+    labelKeywords: ["willing to relocate", "open to relocation"],
+  },
+  {
+    concept: "available_start_date",
+    automationIdHints: [],
+    labelKeywords: ["available start date", "earliest start date", "when can you start", "date available", "availability date"],
+  },
 ];
 
 export interface FieldMatch {

@@ -83,6 +83,10 @@ export function buildValueProvider(data: AutofillData): ValueProvider {
             ? { value: data.contact.portfolio_url, confidence: "high" }
             : null;
       case "location_preference": {
+        // The user's own saved preference wins over a guess derived from the
+        // job's location.
+        if (data.profileFields.preferred_location)
+          return { value: data.profileFields.preferred_location, confidence: "high" };
         const formatted = formatLocationPreference(data.jdLocation);
         return formatted ? { value: formatted, confidence: "low" } : null;
       }
@@ -93,6 +97,22 @@ export function buildValueProvider(data: AutofillData): ValueProvider {
       case "sponsorship":
         return data.commonAnswers.sponsorship
           ? { value: data.commonAnswers.sponsorship, confidence: "high" }
+          : null;
+      case "years_experience":
+        return data.profileFields.years_experience
+          ? { value: data.profileFields.years_experience, confidence: "high" }
+          : null;
+      case "desired_salary":
+        return data.profileFields.desired_salary
+          ? { value: data.profileFields.desired_salary, confidence: "high" }
+          : null;
+      case "willing_to_relocate":
+        return data.profileFields.willing_to_relocate
+          ? { value: data.profileFields.willing_to_relocate, confidence: "high" }
+          : null;
+      case "available_start_date":
+        return data.profileFields.available_start_date
+          ? { value: data.profileFields.available_start_date, confidence: "high" }
           : null;
       default:
         return null;
