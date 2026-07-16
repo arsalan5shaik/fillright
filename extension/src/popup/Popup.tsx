@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 
-import { getStoredSession } from "../lib/session";
+import { getValidSession } from "../lib/session";
 import type { StoredSession } from "../lib/types";
 
 export function Popup() {
   const [session, setSession] = useState<StoredSession | null | undefined>(undefined);
 
   useEffect(() => {
-    getStoredSession().then(setSession);
+    getValidSession().then(setSession);
   }, []);
 
   return (

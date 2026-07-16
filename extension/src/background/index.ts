@@ -10,7 +10,7 @@ import {
   tailorResume,
   updateAnswer,
 } from "../lib/apiClient";
-import { getStoredSession } from "../lib/session";
+import { getValidSession } from "../lib/session";
 import type {
   AutofillData,
   ResolvedAnswer,
@@ -33,7 +33,7 @@ type BridgeMessage =
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 
 async function withSession<T>(fn: (accessToken: string) => Promise<T>): Promise<Result<T>> {
-  const session = await getStoredSession();
+  const session = await getValidSession();
   if (!session) return { ok: false, error: "Not signed in - log into the FillRight website first." };
   try {
     return { ok: true, data: await fn(session.access_token) };
@@ -49,7 +49,7 @@ function sendProgress(tabId: number, status: string, percent: number): void {
 }
 
 async function handleScanJobPosting(posting: ScannedJobPosting, tabId: number): Promise<void> {
-  const session = await getStoredSession();
+  const session = await getValidSession();
   if (!session) {
     sendProgress(tabId, "Not signed in - log into the FillRight website first.", 0);
     return;
