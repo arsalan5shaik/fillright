@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { looksLikeApplicationForm } from "./applicationForm";
+import { isWizardStep, looksLikeApplicationForm } from "./applicationForm";
 
 function markVisible(): void {
   for (const el of document.querySelectorAll("input")) {
@@ -40,5 +40,39 @@ describe("looksLikeApplicationForm", () => {
     document.body.innerHTML = `<button>Apply</button><p>Some job description text.</p>`;
     markVisible();
     expect(looksLikeApplicationForm()).toBe(false);
+  });
+});
+
+describe("isWizardStep", () => {
+  it("returns true inside the apply flow (applyFlow* wrapper present)", () => {
+    document.body.innerHTML = `
+      <div data-automation-id="applyFlowMyExpPage">
+        <h4>My Experience</h4>
+      </div>
+    `;
+    expect(isWizardStep()).toBe(true);
+  });
+
+  it("returns true on an Add-gated step and on the create-account step", () => {
+    document.body.innerHTML = `<button data-automation-id="add-button">Add</button>`;
+    expect(isWizardStep()).toBe(true);
+
+    document.body.innerHTML = `<input type="password" />`;
+    markVisible();
+    expect(isWizardStep()).toBe(true);
+  });
+
+  it("returns false on a job-posting page even with incidental fields (no applyFlow wrapper)", () => {
+    // A posting page can trip looksLikeApplicationForm() via a search box +
+    // job-alert email + filter, but must NOT be treated as a wizard step.
+    document.body.innerHTML = `
+      <input type="search" placeholder="Search jobs" />
+      <input type="email" placeholder="Job alerts" />
+      <input type="text" placeholder="Location filter" />
+      <button>Apply</button>
+    `;
+    markVisible();
+    expect(looksLikeApplicationForm()).toBe(true);
+    expect(isWizardStep()).toBe(false);
   });
 });

@@ -67,6 +67,11 @@ export interface AutofillData {
   commonAnswers: Record<string, string>;
   jdLocation: JdLocation | null;
   jdKeywords: string[];
+  // The user's own résumé skills (short tokens like "Python", "AWS"), used to
+  // fill a "Skills" chip field - distinct from jdKeywords, which are the job
+  // description's requirements and are wrong to type into a field meant for
+  // the candidate's actual skills.
+  resumeSkills: string[];
   // Prefers the tailored resume's work_experience/education (rewritten
   // bullets to match this specific job) over the base resume's, so
   // Workday's own experience fields show the same content as the tailored

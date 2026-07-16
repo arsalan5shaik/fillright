@@ -114,6 +114,7 @@ async function getDefaultResumeContact(accessToken: string): Promise<ResumeConta
 interface ParsedResumeExperience {
   work_experience?: WorkExperienceEntry[];
   education?: EducationEntry[];
+  skills?: string[];
 }
 
 async function getDefaultResumeExperience(accessToken: string): Promise<ParsedResumeExperience> {
@@ -199,8 +200,18 @@ export async function getAutofillData(accessToken: string): Promise<AutofillData
   const experienceSource = application?.tailored_resume_json ?? baseResumeExperience;
   const workExperience = experienceSource.work_experience ?? [];
   const education = experienceSource.education ?? [];
+  const resumeSkills = experienceSource.skills ?? baseResumeExperience.skills ?? [];
 
-  return { profileFields, contact, commonAnswers, jdLocation, jdKeywords, workExperience, education };
+  return {
+    profileFields,
+    contact,
+    commonAnswers,
+    jdLocation,
+    jdKeywords,
+    resumeSkills,
+    workExperience,
+    education,
+  };
 }
 
 export async function resolveQuestion(accessToken: string, questionText: string): Promise<ResolvedAnswer> {

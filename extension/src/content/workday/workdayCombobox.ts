@@ -33,10 +33,22 @@ function findFilterInput(button: HTMLButtonElement): HTMLInputElement | null {
 
 function findVisibleOptionMatching(candidates: string[]): HTMLElement | null {
   const options = Array.from(document.querySelectorAll<HTMLElement>('[role="option"]')).filter(isVisible);
-  for (const candidate of candidates) {
-    const target = candidate.trim().toLowerCase();
+  const normalized = candidates.map((c) => c.trim().toLowerCase()).filter(Boolean);
+
+  // Exact match wins (so "Texas" never gets shadowed by a broader startsWith
+  // hit)...
+  for (const target of normalized) {
     const exact = options.find((opt) => opt.textContent?.trim().toLowerCase() === target);
     if (exact) return exact;
+  }
+  // ...then a prefix match for reasonably-specific candidates, so a résumé's
+  // "Bachelor" lands on the option "Bachelor's Degree" / "Bachelor of Science"
+  // even though the exact option text isn't known ahead of time. Kept to
+  // candidates >= 4 chars so a short token can't match half the list.
+  for (const target of normalized) {
+    if (target.length < 4) continue;
+    const prefix = options.find((opt) => opt.textContent?.trim().toLowerCase().startsWith(target));
+    if (prefix) return prefix;
   }
   return null;
 }
@@ -93,19 +105,24 @@ function valueCandidates(value: string): string[] {
   return candidates;
 }
 
-/** Opens the combobox, types into its filter input (Workday typically
- * virtualizes/filters long option lists like all 50 states rather than
- * rendering them all up front) to narrow it down, then clicks the matching
- * option. Best-effort against one real tenant's markup - relies only on
- * stable signals (aria-haspopup, role="option"), not Emotion-generated
- * classnames, but hasn't been verified across other tenants. */
-export async function setWorkdayComboboxValue(button: HTMLButtonElement, value: string): Promise<boolean> {
+/** Opens the combobox, types `filterTerm` into its filter input (Workday
+ * typically virtualizes/filters long option lists rather than rendering them
+ * all up front) to narrow the list, then clicks the first option matching any
+ * of `candidates`. `filterTerm` is separate from `candidates` because the
+ * value to type to *narrow* the list (e.g. "Bachelor") is often broader than
+ * the exact option we want to *pick* ("Bachelor of Science"). Best-effort
+ * against known Workday markup (aria-haspopup, role="option"), not verified
+ * across all tenants. */
+export async function selectComboboxOption(
+  button: HTMLButtonElement,
+  candidates: string[],
+  filterTerm: string,
+): Promise<boolean> {
   button.click();
 
-  const candidates = valueCandidates(value);
   const filterInput = await waitFor(() => findFilterInput(button), 1000);
   if (filterInput) {
-    typeIntoFilterInput(filterInput, candidates[0]);
+    typeIntoFilterInput(filterInput, filterTerm);
   }
 
   const option = await waitFor(() => findVisibleOptionMatching(candidates), 1500);
@@ -116,4 +133,30 @@ export async function setWorkdayComboboxValue(button: HTMLButtonElement, value: 
 
   option.click();
   return true;
+}
+
+/** State/region convenience wrapper: expands "TX" ↔ "Texas" and types the
+ * value itself as the filter term (the exact option is what we want to pick
+ * and also narrows correctly). */
+export async function setWorkdayComboboxValue(button: HTMLButtonElement, value: string): Promise<boolean> {
+  const candidates = valueCandidates(value);
+  return selectComboboxOption(button, candidates, value);
+}
+
+/** Finds a Workday combobox trigger inside `scope` whose associated label
+ * matches `labelPattern` and is still empty ("Select One") - used to fill a
+ * combobox that lives inside a specific repeatable-section panel (e.g. the
+ * Degree picker within one Education entry) without touching an identically-
+ * labelled combobox in a sibling panel. */
+export function findScopedComboboxTrigger(
+  scope: HTMLElement,
+  labelPattern: RegExp,
+  getLabel: (el: HTMLElement) => string | null,
+): HTMLButtonElement | null {
+  return (
+    Array.from(scope.querySelectorAll<HTMLElement>("button")).find(
+      (el): el is HTMLButtonElement =>
+        isWorkdayComboboxTrigger(el) && isVisible(el) && isComboboxEmpty(el) && labelPattern.test(getLabel(el) ?? ""),
+    ) ?? null
+  );
 }

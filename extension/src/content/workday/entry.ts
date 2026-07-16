@@ -1,31 +1,24 @@
 import type { ScanProgressMessage } from "../../lib/types";
-import { looksLikeApplicationForm, runApplicationFormFill } from "./applicationForm";
+import { isWizardStep, looksLikeApplicationForm, runApplicationFormFill } from "./applicationForm";
 import { findApplyButton, findApplyManuallyButton } from "./applyButton";
 import { detectJobPosting } from "./detect";
 import { getAssociatedLabelText } from "./formUtils";
 import { showProgress, showStartButton, showStatus } from "./statusUi";
 
 const posting = detectJobPosting();
-// Gates evaluateApplicationFlow below: a real job-posting page commonly has
-// its own unrelated form fields (a search box, a "sign up for job alerts"
-// email input, a location filter) that can add up to 3+ and satisfy
-// looksLikeApplicationForm() well before the user ever clicks Apply -
-// without this gate, that was enough to trigger the wizard fill pass on
-// the posting page itself. Starts true only when there's no detected
-// posting to gate on (landed directly on a wizard page).
-let started = !posting;
 
-if (posting) {
+// Only a true job-posting page (the ad itself) shows Start + kicks off the
+// background scan. A wizard step must NOT - the JobPosting JSON-LD persists
+// through Workday's SPA so detectJobPosting() stays truthy inside the flow
+// too, which is exactly what used to make the Start button wrongly reappear
+// mid-wizard and block auto-fill.
+if (posting && !isWizardStep()) {
   chrome.runtime.onMessage.addListener((message: ScanProgressMessage) => {
     if (message.type === "SCAN_PROGRESS") {
       showProgress(message.status, message.percent);
     }
   });
 
-  // Scanning (JD analysis, resume tailoring, cover letter) starts as soon as
-  // a job posting is detected - no click needed. It keeps running in the
-  // background regardless of what step of the application the user reaches
-  // next; the wizard fill pass below never waits on it either.
   showProgress("Scanning job posting...", 5);
   chrome.runtime.sendMessage({ type: "SCAN_JOB_POSTING", posting }, () => {
     if (chrome.runtime.lastError) {
@@ -34,7 +27,6 @@ if (posting) {
   });
 
   showStartButton(() => {
-    started = true;
     const applyButton = findApplyButton();
     if (applyButton) {
       applyButton.click();
@@ -46,10 +38,13 @@ if (posting) {
 
 /** Workday's whole application flow - the "Start Your Application" modal
  * (if the tenant shows one) and every wizard step after it - is client-side
- * routed and never triggers a fresh page load. This content script is only
- * ever injected once (on the job-posting page, or directly on a wizard page
- * if the user landed here straight), so it has to keep re-checking the DOM
- * itself on every render instead of relying on being re-injected per step. */
+ * routed and may never trigger a fresh page load. This content script has to
+ * keep re-checking the DOM itself on every render, both to click through the
+ * modal and to auto-fill each new step, rather than relying on being
+ * re-injected per step. Gated on isWizardStep() (not the old `started`
+ * flag): once we're inside the apply flow, every step fills automatically,
+ * no Start re-click needed - which was the core "doesn't re-fill on the next
+ * page" complaint. */
 let modalHandled = false;
 let lastFillSignature: string | null = null;
 
@@ -67,8 +62,9 @@ function currentStepSignature(): string {
 }
 
 function evaluateApplicationFlow(): void {
-  if (!started) return;
-
+  // Modal handling runs even before we're "inside" the flow, since the
+  // "Start Your Application" modal appears on the posting page right after
+  // Apply is clicked, before the wizard wrapper renders.
   if (!modalHandled) {
     const applyManually = findApplyManuallyButton();
     if (applyManually) {
@@ -78,7 +74,10 @@ function evaluateApplicationFlow(): void {
     }
   }
 
-  if (!looksLikeApplicationForm()) return;
+  // Auto-fill only inside the apply flow - never on the job-posting page
+  // (whose incidental fields must not be touched). looksLikeApplicationForm()
+  // is a secondary guard against firing on an empty/transitional render.
+  if (!isWizardStep() || !looksLikeApplicationForm()) return;
 
   const signature = currentStepSignature();
   if (signature === lastFillSignature) return;

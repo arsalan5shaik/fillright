@@ -1,20 +1,37 @@
-import { getAssociatedLabelText, isVisible } from "./formUtils";
+import { getAssociatedLabelText } from "./formUtils";
 
-/** Any real file-upload step needs an actual <input type="file"> somewhere
- * in the DOM for the browser to allow file selection at all, even if
- * Workday's visible dropzone is a custom-styled overlay - so this doesn't
- * need to guess a tenant-specific automation-id the way other fields might. */
-function visibleFileInputs(): HTMLInputElement[] {
-  return Array.from(document.querySelectorAll<HTMLInputElement>('input[type="file"]')).filter(isVisible);
+/** Every file-upload step needs a real <input type="file"> in the DOM for
+ * the browser to allow selection at all - but Workday (and most custom
+ * dropzone widgets) render that input display:none behind a styled overlay,
+ * so it is deliberately NOT filtered by isVisible here. Filtering by
+ * visibility was the bug that made the résumé never upload: the input was
+ * always there, just visually hidden, so isVisible() rejected it and
+ * findResumeFileInput() returned null. Only genuinely disabled inputs are
+ * excluded. */
+function candidateFileInputs(): HTMLInputElement[] {
+  return Array.from(document.querySelectorAll<HTMLInputElement>('input[type="file"]')).filter((el) => !el.disabled);
+}
+
+/** A hidden file input rarely has its own <label for>, so also checks the
+ * input's own attributes and the NEAREST section heading above it for text
+ * like "Resume/CV" / "Cover Letter". Stops at the first heading found going
+ * up so a résumé slot and a cover-letter slot sharing a high ancestor don't
+ * cross-contaminate each other's context. */
+function fileInputContextText(el: HTMLInputElement): string {
+  const parts: string[] = [getAssociatedLabelText(el) ?? "", el.getAttribute("data-automation-id") ?? "", el.name ?? ""];
+  let container: HTMLElement | null = el.parentElement;
+  for (let depth = 0; container && depth < 5; depth++, container = container.parentElement) {
+    const heading = container.querySelector("h1, h2, h3, h4, h5, label, legend");
+    if (heading?.textContent?.trim()) {
+      parts.push(heading.textContent);
+      break;
+    }
+  }
+  return parts.join(" ");
 }
 
 function findLabeledFileInput(pattern: RegExp): HTMLInputElement | null {
-  return (
-    visibleFileInputs().find((el) => {
-      const label = getAssociatedLabelText(el);
-      return label !== null && pattern.test(label);
-    }) ?? null
-  );
+  return candidateFileInputs().find((el) => pattern.test(fileInputContextText(el))) ?? null;
 }
 
 /** Prefers a file input whose own label clearly says "resume"/"CV" - a step
@@ -27,8 +44,8 @@ export function findResumeFileInput(): HTMLInputElement | null {
   const labeled = findLabeledFileInput(/resume|\bcv\b/i);
   if (labeled) return labeled;
 
-  const inputs = visibleFileInputs();
-  const hasCoverLetterSlot = inputs.some((el) => /cover letter/i.test(getAssociatedLabelText(el) ?? ""));
+  const inputs = candidateFileInputs();
+  const hasCoverLetterSlot = inputs.some((el) => /cover letter/i.test(fileInputContextText(el)));
   return inputs.length === 1 && !hasCoverLetterSlot ? inputs[0] : null;
 }
 

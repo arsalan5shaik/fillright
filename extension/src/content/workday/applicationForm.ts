@@ -32,6 +32,24 @@ export function looksLikeApplicationForm(): boolean {
   );
 }
 
+/** Strict "are we inside Workday's application wizard" check, distinct from
+ * the looser looksLikeApplicationForm() above. Workday wraps every apply-flow
+ * step in an element whose data-automation-id starts with "applyFlow"
+ * (confirmed live: applyFlowMyExpPage) - that wrapper exists on the wizard
+ * steps but NOT on a job-posting page, so unlike a raw field-count it can't
+ * be tripped by a posting page's incidental search/job-alert fields. The
+ * add-button (repeatable sections) and a password field (the create-account
+ * step) are kept as backups in case a tenant's wrapper id differs. This is
+ * the gate for auto-filling on every step: as long as we're inside the
+ * flow, each new step fills without the user re-clicking Start. */
+export function isWizardStep(): boolean {
+  return (
+    document.querySelector('[data-automation-id^="applyFlow"]') !== null ||
+    document.querySelector('[data-automation-id="add-button"]') !== null ||
+    hasAccountCreationStep()
+  );
+}
+
 type AutofillDataResponse = { ok: true; data: AutofillData } | { ok: false; error: string };
 type TailoredResumeFileResponse = { ok: true; data: TailoredResumeFilePayload | null } | { ok: false; error: string };
 
@@ -133,7 +151,9 @@ export async function runApplicationFormFill(): Promise<void> {
   // regardless of whether the click-through succeeded, so worst case this
   // field is just left blank rather than getting the wrong kind of answer.
   const remainingForQa = result.unmatchedTextFields.filter(
-    (field) => !isAutoFirstOptionQuestion(field.labelText) && !fillSkillsQuestion(field, autofillResponse.data.jdKeywords),
+    (field) =>
+      !isAutoFirstOptionQuestion(field.labelText) &&
+      !fillSkillsQuestion(field, autofillResponse.data.resumeSkills, autofillResponse.data.jdKeywords),
   );
   const skillsAnswered = result.unmatchedTextFields.length - remainingForQa.length;
 
