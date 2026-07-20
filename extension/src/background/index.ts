@@ -13,6 +13,7 @@ import {
 } from "../lib/apiClient";
 import { getValidSession } from "../lib/session";
 import type {
+  AnalyzeApplicationResult,
   AutofillData,
   ResolvedAnswer,
   ResolvedChoice,
@@ -51,6 +52,29 @@ function sendProgress(tabId: number, status: string, percent: number): void {
   });
 }
 
+function cap(s: string | null | undefined): string | null {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : null;
+}
+
+function sendJobAnalyzed(tabId: number, application: AnalyzeApplicationResult): void {
+  const jd = application.jd_analysis;
+  const loc = jd?.locations?.[0];
+  const tags = [
+    loc ? [loc.city, loc.state].filter(Boolean).join(", ") : null,
+    cap(loc?.workplace_type),
+    jd?.seniority,
+    jd?.employment_type,
+  ].filter((t): t is string => Boolean(t));
+  chrome.tabs
+    .sendMessage(tabId, {
+      type: "JOB_ANALYZED",
+      company: application.company,
+      title: application.job_title ?? "",
+      tags,
+    })
+    .catch(() => {});
+}
+
 async function handleScanJobPosting(posting: ScannedJobPosting, tabId: number): Promise<void> {
   const session = await getValidSession();
   if (!session) {
@@ -61,6 +85,7 @@ async function handleScanJobPosting(posting: ScannedJobPosting, tabId: number): 
   try {
     sendProgress(tabId, "Analyzing job description...", 15);
     const application = await analyzeJobDescription(session.access_token, posting);
+    sendJobAnalyzed(tabId, application);
 
     if (application.is_duplicate) {
       sendProgress(tabId, "Already scanned this posting before - reusing the cached analysis.", 40);

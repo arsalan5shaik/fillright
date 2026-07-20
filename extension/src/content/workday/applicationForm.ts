@@ -8,7 +8,7 @@ import { runQaPass } from "./qaPass";
 import { fillEducationSection, fillWebsitesSection, fillWorkExperienceSection, type WebsiteEntry } from "./repeatableSections";
 import { runRequiredFieldFallback } from "./requiredFields";
 import { fillSkillsQuestion } from "./skillsQuestion";
-import { showProgress, showStatus } from "./statusUi";
+import { type ChecklistItem, setChecklist, showProgress, showStatus } from "./statusUi";
 import { buildValueProvider } from "./valueProvider";
 
 /** Not the job-posting page (no JobPosting JSON-LD, checked by the caller)
@@ -192,6 +192,24 @@ export async function runApplicationFormFill(): Promise<void> {
   // from its own options (sensitive/legal questions get a safe decline/skip),
   // so a required field never blocks submission. Marked "please review".
   const requiredFilled = await runRequiredFieldFallback();
+
+  // Application dashboard: a checklist of what this step filled.
+  const items: ChecklistItem[] = [];
+  const add = (label: string, done: boolean) => {
+    if (done) items.push({ label, status: "done" });
+  };
+  add(`Profile fields (${totalFilled})`, totalFilled > 0);
+  add(`Work experience (${workExperienceFilled})`, workExperienceFilled > 0);
+  add(`Education (${educationFilled})`, educationFilled > 0);
+  add(`Website links (${websitesFilled})`, websitesFilled > 0);
+  add(`Dropdowns selected (${comboboxResult.filled})`, comboboxResult.filled > 0);
+  add(`Skills (${skillsAnswered})`, skillsAnswered > 0);
+  add("Résumé / CV attached", fileAttachStatus.includes("Attached"));
+  add("Cover letter attached", coverLetterAttachStatus.includes("Attached"));
+  add(`Questions answered (${attempted})`, attempted > 0);
+  add(`Screening "No" answers (${conflictOfInterestAnswered})`, conflictOfInterestAnswered > 0);
+  add(`Required fields AI-answered (${requiredFilled})`, requiredFilled > 0);
+  setChecklist(items);
 
   const stillUnfilled = result.unmatched - attempted - skillsAnswered - requiredFilled;
   showProgress(

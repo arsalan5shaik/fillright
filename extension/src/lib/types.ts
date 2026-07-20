@@ -23,9 +23,19 @@ export interface AnalyzeApplicationResult {
   job_title: string | null;
   job_url: string | null;
   is_duplicate: boolean;
+  jd_analysis?: {
+    keywords: { term: string; required: boolean }[];
+    seniority: string | null;
+    locations: { city: string | null; state: string | null; country: string | null; workplace_type: string | null }[];
+    employment_type: string | null;
+  };
 }
 
 export type ScanProgressMessage = { type: "SCAN_PROGRESS"; tabId: number; status: string; percent: number };
+
+/** Sent from the background to the content script after the scanned job is
+ * analyzed, so the panel's job card can show location/seniority/type tags. */
+export type JobAnalyzedMessage = { type: "JOB_ANALYZED"; company: string; title: string; tags: string[] };
 
 export type ScanJobPostingMessage = { type: "SCAN_JOB_POSTING"; posting: ScannedJobPosting };
 

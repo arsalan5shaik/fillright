@@ -1,84 +1,99 @@
 const HOST_ID = "fillright-status-host";
+const WEBSITE_URL = "http://localhost:3000";
 
-interface StatusBoxElements {
-  card: HTMLDivElement;
-  message: HTMLDivElement;
-  barOuter: HTMLDivElement;
-  barInner: HTMLDivElement;
-  actions: HTMLDivElement;
+export type BadgeState = "ready" | "working" | "done" | "error";
+export interface ChecklistItem {
+  label: string;
+  status: "done" | "active" | "pending";
 }
 
-// Rendered inside a Shadow DOM so Workday's own stylesheet can't bleed in and
-// break the panel (and vice-versa) - the previous plain-inline-style box was
-// at the mercy of the host page's CSS reset/specificity.
+interface PanelRefs {
+  root: ShadowRoot;
+  badge: HTMLDivElement;
+  jobCard: HTMLDivElement;
+  autofillBtn: HTMLButtonElement;
+  progressWrap: HTMLDivElement;
+  bar: HTMLDivElement;
+  percent: HTMLSpanElement;
+  message: HTMLDivElement;
+  checklist: HTMLDivElement;
+  keywords: HTMLDivElement;
+}
+
+// Rendered inside a Shadow DOM so Workday's stylesheet can't affect it.
 const STYLES = `
   :host { all: initial; }
+  * { box-sizing: border-box; }
   .card {
     position: fixed; bottom: 20px; right: 20px; z-index: 2147483647;
-    width: 300px; box-sizing: border-box;
-    background: #ffffff; color: #1f2937;
-    border: 1px solid #e5e7eb; border-radius: 14px;
-    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.18);
+    width: 340px; max-height: 82vh; display: flex; flex-direction: column;
+    background: #fff; color: #0f172a; border: 1px solid #e2e8f0; border-radius: 16px;
+    box-shadow: 0 12px 40px rgba(15,23,42,0.20);
     font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     overflow: hidden;
   }
-  .header {
-    display: flex; align-items: center; gap: 8px;
-    padding: 12px 14px; border-bottom: 1px solid #f1f5f9;
-  }
-  .logo {
-    width: 22px; height: 22px; border-radius: 6px; flex: 0 0 auto;
-    background: linear-gradient(135deg, #22d3ee, #0891b2);
-    display: flex; align-items: center; justify-content: center;
-    color: #fff; font-weight: 800; font-size: 13px;
-  }
-  .title { font-weight: 700; font-size: 14px; letter-spacing: -0.01em; }
-  .spacer { flex: 1 1 auto; }
-  .close {
-    border: none; background: transparent; cursor: pointer;
-    color: #9ca3af; font-size: 18px; line-height: 1; padding: 2px 4px; border-radius: 6px;
-  }
-  .close:hover { background: #f3f4f6; color: #4b5563; }
-  .body { padding: 12px 14px 14px; }
-  .message { font-size: 12.5px; line-height: 1.5; color: #475569; }
-  .bar-outer {
-    margin-top: 12px; height: 7px; border-radius: 999px;
-    background: #eef2f6; overflow: hidden; display: none;
-  }
-  .bar-inner {
-    height: 100%; width: 0%; border-radius: 999px;
-    background: linear-gradient(90deg, #22d3ee, #0891b2);
-    transition: width 0.35s ease;
-  }
-  .actions { margin-top: 12px; display: flex; gap: 8px; }
-  .actions:empty { display: none; }
-  .btn {
-    appearance: none; border: none; cursor: pointer;
-    background: linear-gradient(135deg, #0ea5b7, #0891b2); color: #fff;
-    font-weight: 600; font-size: 13px; padding: 8px 18px; border-radius: 9px;
-    box-shadow: 0 1px 2px rgba(8, 145, 178, 0.4);
-  }
-  .btn:hover { filter: brightness(1.05); }
-  .btn:active { transform: translateY(1px); }
+  .header { display:flex; align-items:center; gap:9px; padding:13px 15px; border-bottom:1px solid #f1f5f9; }
+  .logo { width:24px; height:24px; border-radius:7px; flex:0 0 auto;
+    background:linear-gradient(135deg,#34d399,#0891b2); color:#fff; font-weight:800; font-size:14px;
+    display:flex; align-items:center; justify-content:center; }
+  .title { font-weight:700; font-size:15px; letter-spacing:-0.01em; }
+  .spacer { flex:1; }
+  .close { border:none; background:transparent; cursor:pointer; color:#94a3b8; font-size:19px; line-height:1; padding:2px 5px; border-radius:6px; }
+  .close:hover { background:#f1f5f9; color:#475569; }
+  .tabs { display:flex; gap:4px; padding:8px 12px 0; border-bottom:1px solid #f1f5f9; }
+  .tab { flex:1; text-align:center; font-size:12.5px; font-weight:600; color:#64748b; padding:8px 4px; cursor:pointer;
+    border:none; background:transparent; border-bottom:2px solid transparent; }
+  .tab.active { color:#0891b2; border-bottom-color:#0891b2; }
+  .body { padding:14px 15px; overflow-y:auto; }
+  .pane { display:none; }
+  .pane.active { display:block; }
+  .badge { display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:700; padding:4px 10px;
+    border-radius:999px; margin-bottom:12px; }
+  .badge .dot { width:7px; height:7px; border-radius:50%; }
+  .badge.ready { background:#ecfdf5; color:#047857; } .badge.ready .dot { background:#10b981; }
+  .badge.working { background:#eff6ff; color:#1d4ed8; } .badge.working .dot { background:#3b82f6; }
+  .badge.done { background:#ecfdf5; color:#047857; } .badge.done .dot { background:#10b981; }
+  .badge.error { background:#fef2f2; color:#b91c1c; } .badge.error .dot { background:#ef4444; }
+  .job-card { border:1px solid #eef2f6; border-radius:12px; padding:12px; margin-bottom:12px; display:none; }
+  .job-company { font-size:12px; color:#64748b; font-weight:600; }
+  .job-title { font-size:15px; font-weight:700; margin:2px 0 8px; letter-spacing:-0.01em; }
+  .tags { display:flex; flex-wrap:wrap; gap:6px; }
+  .tag { font-size:11px; font-weight:600; color:#334155; background:#f1f5f9; border-radius:6px; padding:3px 8px; }
+  .autofill-btn { width:100%; border:none; cursor:pointer; color:#fff; font-weight:700; font-size:15px;
+    padding:13px; border-radius:12px; background:linear-gradient(135deg,#0ea5b7,#0891b2);
+    box-shadow:0 2px 6px rgba(8,145,178,0.4); display:none; }
+  .autofill-btn:hover { filter:brightness(1.05); } .autofill-btn:active { transform:translateY(1px); }
+  .progress-wrap { display:none; margin:10px 0 6px; }
+  .progress-row { display:flex; justify-content:space-between; font-size:12px; font-weight:600; color:#475569; margin-bottom:5px; }
+  .track { height:8px; border-radius:999px; background:#eef2f6; overflow:hidden; }
+  .bar { height:100%; width:0%; border-radius:999px; background:linear-gradient(90deg,#34d399,#0891b2); transition:width .35s ease; }
+  .message { font-size:12px; line-height:1.5; color:#64748b; margin-top:10px; }
+  .dash-title { font-size:13px; font-weight:700; margin:14px 0 8px; }
+  .checklist { display:flex; flex-direction:column; gap:7px; }
+  .check { display:flex; align-items:center; gap:9px; font-size:12.5px; color:#334155; }
+  .check .ic { width:18px; height:18px; border-radius:50%; flex:0 0 auto; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; }
+  .check.done .ic { background:#10b981; color:#fff; }
+  .check.active .ic { border:2px solid #0891b2; color:#0891b2; }
+  .check.pending .ic { border:2px solid #cbd5e1; color:transparent; }
+  .check.pending { color:#94a3b8; }
+  .kw-score { font-size:13px; font-weight:700; margin-bottom:10px; }
+  .kw-list { display:flex; flex-direction:column; gap:6px; }
+  .kw { display:flex; align-items:center; gap:8px; font-size:12.5px; }
+  .kw .ic { width:16px; height:16px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:800; flex:0 0 auto; }
+  .kw.hit .ic { background:#10b981; color:#fff; } .kw.hit { color:#334155; }
+  .kw.miss .ic { border:2px solid #f59e0b; color:transparent; } .kw.miss { color:#94a3b8; }
+  .profile-link { display:inline-block; text-decoration:none; text-align:center; width:100%;
+    background:linear-gradient(135deg,#0ea5b7,#0891b2); color:#fff; font-weight:600; font-size:13px; padding:10px; border-radius:10px; }
+  .muted { color:#94a3b8; font-size:12px; }
 `;
 
-function ensureBox(): StatusBoxElements {
-  const existingHost = document.getElementById(HOST_ID);
-  if (existingHost?.shadowRoot) {
-    const root = existingHost.shadowRoot;
-    return {
-      card: root.querySelector<HTMLDivElement>(".card")!,
-      message: root.querySelector<HTMLDivElement>(".message")!,
-      barOuter: root.querySelector<HTMLDivElement>(".bar-outer")!,
-      barInner: root.querySelector<HTMLDivElement>(".bar-inner")!,
-      actions: root.querySelector<HTMLDivElement>(".actions")!,
-    };
-  }
+function ensurePanel(): PanelRefs {
+  const existing = document.getElementById(HOST_ID);
+  if (existing?.shadowRoot) return readRefs(existing.shadowRoot);
 
   const host = document.createElement("div");
   host.id = HOST_ID;
   const root = host.attachShadow({ mode: "open" });
-
   const style = document.createElement("style");
   style.textContent = STYLES;
 
@@ -86,63 +101,151 @@ function ensureBox(): StatusBoxElements {
   card.className = "card";
   card.innerHTML = `
     <div class="header">
-      <div class="logo">F</div>
-      <div class="title">FillRight</div>
-      <div class="spacer"></div>
+      <div class="logo">F</div><div class="title">FillRight</div><div class="spacer"></div>
       <button class="close" aria-label="Dismiss">&times;</button>
     </div>
+    <div class="tabs">
+      <button class="tab active" data-tab="autofill">Autofill</button>
+      <button class="tab" data-tab="keywords">Keywords</button>
+      <button class="tab" data-tab="profile">Profile</button>
+    </div>
     <div class="body">
-      <div class="message"></div>
-      <div class="bar-outer"><div class="bar-inner"></div></div>
-      <div class="actions"></div>
+      <div class="pane active" data-pane="autofill">
+        <div class="badge ready"><span class="dot"></span><span data-role="badge-text">Ready</span></div>
+        <div class="job-card">
+          <div class="job-company" data-role="job-company"></div>
+          <div class="job-title" data-role="job-title"></div>
+          <div class="tags" data-role="tags"></div>
+        </div>
+        <button class="autofill-btn">Autofill this page</button>
+        <div class="progress-wrap">
+          <div class="progress-row"><span>Completion</span><span data-role="percent">0%</span></div>
+          <div class="track"><div class="bar"></div></div>
+        </div>
+        <div class="message"></div>
+        <div class="dash-title" data-role="dash-title" style="display:none">Application Dashboard</div>
+        <div class="checklist"></div>
+      </div>
+      <div class="pane" data-pane="keywords">
+        <div class="kw-score muted">Scan a job posting to see your keyword match.</div>
+        <div class="kw-list"></div>
+      </div>
+      <div class="pane" data-pane="profile">
+        <p class="muted">Your résumé, work history, education, skills, and saved answers live on the FillRight website.</p>
+        <a class="profile-link" href="${WEBSITE_URL}" target="_blank" rel="noreferrer">Manage your profile</a>
+      </div>
     </div>
   `;
-
   root.append(style, card);
   document.body.appendChild(host);
 
   card.querySelector<HTMLButtonElement>(".close")!.addEventListener("click", () => host.remove());
+  card.querySelectorAll<HTMLButtonElement>(".tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      card.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === tab));
+      const name = tab.dataset.tab;
+      card.querySelectorAll<HTMLElement>(".pane").forEach((p) => p.classList.toggle("active", p.dataset.pane === name));
+    });
+  });
 
+  return readRefs(root);
+}
+
+function readRefs(root: ShadowRoot): PanelRefs {
+  const q = <T extends Element>(s: string) => root.querySelector<T>(s)!;
   return {
-    card,
-    message: card.querySelector<HTMLDivElement>(".message")!,
-    barOuter: card.querySelector<HTMLDivElement>(".bar-outer")!,
-    barInner: card.querySelector<HTMLDivElement>(".bar-inner")!,
-    actions: card.querySelector<HTMLDivElement>(".actions")!,
+    root,
+    badge: q(".badge"),
+    jobCard: q(".job-card"),
+    autofillBtn: q(".autofill-btn"),
+    progressWrap: q(".progress-wrap"),
+    bar: q(".bar"),
+    percent: q('[data-role="percent"]'),
+    message: q(".message"),
+    checklist: q(".checklist"),
+    keywords: q(".kw-list"),
   };
 }
 
-/** Plain status line, bar hidden - used for messages that don't map to a
- * discrete step (Q&A/file-attach results, errors). */
+export function setBadge(text: string, state: BadgeState): void {
+  const p = ensurePanel();
+  p.badge.className = `badge ${state}`;
+  p.badge.querySelector('[data-role="badge-text"]')!.textContent = text;
+}
+
+export function setJobCard(company: string, title: string, tags: string[]): void {
+  const p = ensurePanel();
+  p.jobCard.querySelector('[data-role="job-company"]')!.textContent = company;
+  p.jobCard.querySelector('[data-role="job-title"]')!.textContent = title;
+  const tagWrap = p.jobCard.querySelector('[data-role="tags"]')!;
+  tagWrap.innerHTML = "";
+  for (const t of tags.filter(Boolean)) {
+    const el = document.createElement("span");
+    el.className = "tag";
+    el.textContent = t;
+    tagWrap.appendChild(el);
+  }
+  p.jobCard.style.display = "block";
+}
+
+/** JD keyword vs. résumé-skill match view (the "Keywords Score" tab). */
+export function setKeywords(jdKeywords: string[], resumeSkills: string[]): void {
+  const p = ensurePanel();
+  const skillSet = new Set(resumeSkills.map((s) => s.trim().toLowerCase()));
+  const unique = Array.from(new Set(jdKeywords.map((k) => k.trim()).filter(Boolean)));
+  const hits = unique.filter((k) => skillSet.has(k.toLowerCase()));
+  const scoreEl = p.root.querySelector<HTMLDivElement>(".kw-score")!;
+  const pct = unique.length ? Math.round((hits.length / unique.length) * 100) : 0;
+  scoreEl.className = "kw-score";
+  scoreEl.textContent = `Keyword match: ${pct}% (${hits.length}/${unique.length})`;
+  p.keywords.innerHTML = "";
+  for (const k of unique) {
+    const hit = skillSet.has(k.toLowerCase());
+    const row = document.createElement("div");
+    row.className = `kw ${hit ? "hit" : "miss"}`;
+    row.innerHTML = `<span class="ic">${hit ? "&checkmark;" : ""}</span><span>${k}</span>`;
+    p.keywords.appendChild(row);
+  }
+}
+
+export function setChecklist(items: ChecklistItem[]): void {
+  const p = ensurePanel();
+  const dashTitle = p.root.querySelector<HTMLElement>('[data-role="dash-title"]')!;
+  dashTitle.style.display = items.length ? "block" : "none";
+  p.checklist.innerHTML = "";
+  for (const item of items) {
+    const row = document.createElement("div");
+    row.className = `check ${item.status}`;
+    row.innerHTML = `<span class="ic">${item.status === "done" ? "&checkmark;" : ""}</span><span>${item.label}</span>`;
+    p.checklist.appendChild(row);
+  }
+}
+
+/** Plain status line, progress bar hidden. */
 export function showStatus(message: string): void {
-  const els = ensureBox();
-  els.message.textContent = message;
-  els.barOuter.style.display = "none";
+  const p = ensurePanel();
+  p.message.textContent = message;
+  p.progressWrap.style.display = "none";
 }
 
-/** Status line + a real progress bar, for flows with known discrete steps
- * (the JD scan pipeline, the application-form fill pipeline). */
+/** Status line + progress bar (the fill/scan pipelines). */
 export function showProgress(message: string, percent: number): void {
-  const els = ensureBox();
-  els.message.textContent = message;
-  els.barOuter.style.display = "block";
-  els.barInner.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+  const p = ensurePanel();
+  const pct = Math.max(0, Math.min(100, percent));
+  p.message.textContent = message;
+  p.progressWrap.style.display = "block";
+  p.bar.style.width = `${pct}%`;
+  p.percent.textContent = `${pct}%`;
+  setBadge(pct >= 100 ? "Filled" : "Autofilling…", pct >= 100 ? "done" : "working");
 }
 
-/** Shown alongside the (auto-triggered) scan progress bar on job-posting
- * pages - clicking it drives Workday's own "Apply" button to kick off the
- * application flow, which the extension then autofills automatically once
- * it lands on the wizard/account-creation page. */
+/** The primary "Autofill this page" action (shown on a job-posting page). */
 export function showStartButton(onStart: () => void): void {
-  const els = ensureBox();
-  if (els.actions.querySelector(".btn")) return; // already showing - no duplicates
-
-  const button = document.createElement("button");
-  button.className = "btn";
-  button.textContent = "Start";
-  button.addEventListener("click", () => {
-    button.remove();
+  const p = ensurePanel();
+  p.autofillBtn.style.display = "block";
+  p.autofillBtn.onclick = () => {
+    p.autofillBtn.style.display = "none";
+    setBadge("Autofilling…", "working");
     onStart();
-  });
-  els.actions.appendChild(button);
+  };
 }

@@ -1,8 +1,10 @@
-import type { ScanProgressMessage } from "../../lib/types";
+import type { AutofillData, JobAnalyzedMessage, ScanProgressMessage } from "../../lib/types";
 import { isWizardStep, looksLikeApplicationForm, runApplicationFormFill } from "./applicationForm";
 import { findApplyButton, findApplyManuallyButton } from "./applyButton";
 import { detectJobPosting } from "./detect";
-import { showProgress, showStartButton, showStatus } from "./statusUi";
+import { setBadge, setJobCard, setKeywords, showProgress, showStartButton, showStatus } from "./statusUi";
+
+type AutofillDataResponse = { ok: true; data: AutofillData } | { ok: false; error: string };
 
 const posting = detectJobPosting();
 
@@ -12,9 +14,18 @@ const posting = detectJobPosting();
 // too, which is exactly what used to make the Start button wrongly reappear
 // mid-wizard and block auto-fill.
 if (posting && !isWizardStep()) {
-  chrome.runtime.onMessage.addListener((message: ScanProgressMessage) => {
+  setBadge("Ready", "ready");
+  setJobCard(posting.company, posting.jobTitle, []);
+
+  chrome.runtime.onMessage.addListener((message: ScanProgressMessage | JobAnalyzedMessage) => {
     if (message.type === "SCAN_PROGRESS") {
       showProgress(message.status, message.percent);
+    } else if (message.type === "JOB_ANALYZED") {
+      setJobCard(message.company, message.title || posting.jobTitle, message.tags);
+      // Populate the Keywords tab (JD keywords vs. your résumé skills).
+      chrome.runtime.sendMessage({ type: "GET_AUTOFILL_DATA" }, (resp: AutofillDataResponse) => {
+        if (!chrome.runtime.lastError && resp?.ok) setKeywords(resp.data.jdKeywords, resp.data.resumeSkills);
+      });
     }
   });
 
