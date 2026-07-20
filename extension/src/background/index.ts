@@ -65,6 +65,10 @@ function sendJobAnalyzed(tabId: number, application: AnalyzeApplicationResult): 
     jd?.seniority,
     jd?.employment_type,
   ].filter((t): t is string => Boolean(t));
+  // Required keywords first, mirroring getAutofillData's ordering.
+  const keywords = [...(jd?.keywords ?? [])]
+    .sort((a, b) => Number(b.required) - Number(a.required))
+    .map((k) => k.term);
   chrome.tabs
     .sendMessage(tabId, {
       type: "JOB_ANALYZED",
@@ -72,6 +76,7 @@ function sendJobAnalyzed(tabId: number, application: AnalyzeApplicationResult): 
       title: application.job_title ?? "",
       tags,
       salary: jd?.salary_range ?? null,
+      keywords,
     })
     .catch(() => {});
 }

@@ -66,9 +66,13 @@ if (posting && onWorkday && !isWizardStep()) {
       setJobCard(message.company, message.title || posting.jobTitle, message.tags, message.salary);
       // Résumé card with a live preview of the tailored PDF.
       setResume(null, previewTailoredResume);
-      // Populate the Keywords tab (JD keywords vs. your résumé skills).
+      // Keywords tab: JD keywords for THIS job (from the message) vs. your
+      // résumé skills (fetched). Fall back to the fetched jdKeywords only if
+      // the message didn't carry any.
       chrome.runtime.sendMessage({ type: "GET_AUTOFILL_DATA" }, (resp: AutofillDataResponse) => {
-        if (!chrome.runtime.lastError && resp?.ok) setKeywords(resp.data.jdKeywords, resp.data.resumeSkills);
+        if (chrome.runtime.lastError || !resp?.ok) return;
+        const jdKeywords = message.keywords?.length ? message.keywords : resp.data.jdKeywords;
+        setKeywords(jdKeywords, resp.data.resumeSkills);
       });
     }
   });

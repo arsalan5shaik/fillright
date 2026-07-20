@@ -42,6 +42,10 @@ export type JobAnalyzedMessage = {
   title: string;
   tags: string[];
   salary?: string | null;
+  // The scanned job's own JD keywords (required-first). Carried on the message
+  // so the Keywords tab reflects THIS job, rather than re-deriving them from
+  // the most-recently-created application (which may be a different posting).
+  keywords: string[];
 };
 
 export type ScanJobPostingMessage = { type: "SCAN_JOB_POSTING"; posting: ScannedJobPosting };
