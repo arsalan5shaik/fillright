@@ -17,7 +17,8 @@ export type FieldConcept =
   | "years_experience"
   | "desired_salary"
   | "willing_to_relocate"
-  | "available_start_date";
+  | "available_start_date"
+  | "phone_device_type";
 
 interface FieldConceptDef {
   concept: FieldConcept;
@@ -83,6 +84,13 @@ export const FIELD_CONCEPTS: FieldConceptDef[] = [
     concept: "available_start_date",
     automationIdHints: [],
     labelKeywords: ["available start date", "earliest start date", "when can you start", "date available", "availability date"],
+  },
+  // Workday's "My Information" phone section has a required "Phone Device Type"
+  // dropdown (Mobile / Home / Work). Defaulted to Mobile in valueProvider.
+  {
+    concept: "phone_device_type",
+    automationIdHints: ["phone-device-type", "phonedevicetype"],
+    labelKeywords: ["phone device type", "device type"],
   },
 ];
 

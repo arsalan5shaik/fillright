@@ -114,6 +114,10 @@ export function buildValueProvider(data: AutofillData): ValueProvider {
         return data.profileFields.available_start_date
           ? { value: data.profileFields.available_start_date, confidence: "high" }
           : null;
+      case "phone_device_type":
+        // Required dropdown on Workday's My Information step; default to Mobile
+        // unless the user saved an override.
+        return { value: data.profileFields.phone_device_type || "Mobile", confidence: "high" };
       default:
         return null;
     }

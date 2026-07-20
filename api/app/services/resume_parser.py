@@ -21,8 +21,10 @@ def parse_resume(file_bytes: bytes, file_type: str, *, user_id: str) -> ParsedRe
     text = extract_text(file_bytes, file_type)
     prompt = (
         "Extract structured resume data (contact info, work experience, "
-        "education, skills, certifications) from the resume text below. "
-        "Only include information actually present in the text — never "
-        "invent or infer missing details.\n\n" + text
+        "education, skills, certifications) from the resume text below. For "
+        "each education entry, capture the GPA / grade average into the gpa "
+        "field if the resume states one (e.g. '3.8', '3.8/4.0'). Only include "
+        "information actually present in the text — never invent or infer "
+        "missing details.\n\n" + text
     )
     return call_structured("resume_parsing", prompt, ParsedResume, user_id=user_id)

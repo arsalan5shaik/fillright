@@ -24,6 +24,7 @@ class Education(BaseModel):
     institution: str
     degree: str | None = None
     field_of_study: str | None = None
+    gpa: str | None = None
     start_date: str | None = None
     end_date: str | None = None
 

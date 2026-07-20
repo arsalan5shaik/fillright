@@ -31,6 +31,30 @@ function findFilterInput(button: HTMLButtonElement): HTMLInputElement | null {
   return input && isVisible(input) ? input : null;
 }
 
+function firstVisibleOption(): HTMLElement | null {
+  return Array.from(document.querySelectorAll<HTMLElement>('[role="option"]')).find(isVisible) ?? null;
+}
+
+/** Types character-by-character (keydown + native value set + input + keyup).
+ * Typeahead comboboxes fetch their options in response to real input events,
+ * so a one-shot value set often doesn't trigger the search. */
+function simulateTyping(input: HTMLInputElement, text: string): void {
+  input.focus();
+  let acc = "";
+  for (const ch of text) {
+    acc += ch;
+    const init: KeyboardEventInit = { key: ch, bubbles: true };
+    input.dispatchEvent(new KeyboardEvent("keydown", init));
+    if (nativeInputValueSetter) {
+      nativeInputValueSetter.call(input, acc);
+    } else {
+      input.value = acc;
+    }
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new KeyboardEvent("keyup", init));
+  }
+}
+
 function findVisibleOptionMatching(candidates: string[]): HTMLElement | null {
   const options = Array.from(document.querySelectorAll<HTMLElement>('[role="option"]')).filter(isVisible);
   const normalized = candidates.map((c) => c.trim().toLowerCase()).filter(Boolean);
@@ -127,21 +151,53 @@ export async function selectComboboxOption(
   candidates: string[],
   filterTerm: string,
 ): Promise<boolean> {
-  button.click();
+  // Verify-and-retry ("triple check"): a single open+click sometimes doesn't
+  // register (option rendered late, click landed mid-reflow), leaving the
+  // trigger on "Select One" and the required field erroring. Retry up to 3x,
+  // confirming each time that the trigger's value actually changed.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (!isComboboxEmpty(button)) return true; // already selected (idempotent / committed by a prior try)
 
-  const filterInput = await waitFor(() => findFilterInput(button), 1000);
-  if (filterInput) {
-    typeIntoFilterInput(filterInput, filterTerm);
+    button.click(); // open
+    const filterInput = await waitFor(() => findFilterInput(button), 1000);
+    if (filterInput) {
+      typeIntoFilterInput(filterInput, filterTerm);
+    }
+
+    const option = await waitFor(() => findVisibleOptionMatching(candidates), 1500);
+    if (option) {
+      option.click();
+      const committed = await waitFor(() => (!isComboboxEmpty(button) ? true : null), 700);
+      if (committed) return true;
+    }
+
+    // This attempt didn't commit - close any open popup so the next attempt's
+    // click opens a fresh one rather than toggling it shut.
+    if (findFilterInput(button)) button.click();
+    await waitFor(() => (findFilterInput(button) ? null : true), 300);
   }
+  return false;
+}
 
-  const option = await waitFor(() => findVisibleOptionMatching(candidates), 1500);
-  if (!option) {
-    button.click(); // best-effort close so we don't leave the popup hanging open
-    return false;
+/** Typeahead combobox: an <input> where you type a query, Workday fetches
+ * matching role="option"s, and you pick one - distinct from the listbox
+ * combobox (button trigger). Used for School / Field of Study ("type and
+ * press enter to search"). Types the value, waits for a matching option,
+ * else takes the top result (typeaheads rank the closest match first). */
+export async function fillTypeaheadCombobox(input: HTMLInputElement, value: string): Promise<boolean> {
+  if (!isVisible(input) || input.value.trim() !== "") return false;
+  simulateTyping(input, value);
+  const matched = await waitFor(() => findVisibleOptionMatching([value]), 2500);
+  if (matched) {
+    matched.click();
+    return true;
   }
-
-  option.click();
-  return true;
+  const first = firstVisibleOption();
+  if (first) {
+    first.click();
+    return true;
+  }
+  return false;
 }
 
 /** State/region convenience wrapper: expands "TX" ↔ "Texas" and types the

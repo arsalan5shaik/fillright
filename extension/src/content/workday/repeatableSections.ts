@@ -1,7 +1,7 @@
 import type { EducationEntry, WorkExperienceEntry } from "../../lib/types";
 import { markField } from "./confidenceUi";
 import { getAssociatedLabelText, isVisible, setFieldValue } from "./formUtils";
-import { findScopedComboboxTrigger, selectComboboxOption } from "./workdayCombobox";
+import { fillTypeaheadCombobox, findScopedComboboxTrigger, selectComboboxOption } from "./workdayCombobox";
 
 /** Workday's repeatable sections (Work Experience, Education, Websites)
  * don't show any fields at all until you click "Add"/"Add Another" - the
@@ -48,23 +48,41 @@ function waitFor<T>(check: () => T | null, timeoutMs: number, intervalMs = 100):
   });
 }
 
-/** Fills the first empty, visible text/textarea within `panel` whose label
+/** Finds the first empty, visible text/textarea within `panel` whose label
  * matches `labelPattern` - scoped to this one entry's panel so "Start Date"
  * in entry 2 never gets confused with "Start Date" in entry 1. */
+function findScopedInput(panel: HTMLElement, labelPattern: RegExp): HTMLInputElement | HTMLTextAreaElement | null {
+  const fields = Array.from(panel.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input, textarea"));
+  return (
+    fields.find((el) => {
+      if (!isVisible(el) || el.value.trim() !== "") return false;
+      const label = getAssociatedLabelText(el);
+      return label !== null && labelPattern.test(label);
+    }) ?? null
+  );
+}
+
 function fillScopedField(panel: HTMLElement, labelPattern: RegExp, value: string | null | undefined): boolean {
   if (!value) return false;
-
-  const fields = Array.from(panel.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input, textarea"));
-  const target = fields.find((el) => {
-    if (!isVisible(el) || el.value.trim() !== "") return false;
-    const label = getAssociatedLabelText(el);
-    return label !== null && labelPattern.test(label);
-  });
+  const target = findScopedInput(panel, labelPattern);
   if (!target) return false;
-
   setFieldValue(target, value);
   markField(target, "high");
   return true;
+}
+
+/** Fills a scoped field that may be a typeahead combobox (School, Field of
+ * Study - "type and press enter to search"). Types the value via keystroke
+ * simulation and clicks the matching option; if no option list appears it's a
+ * plain text field and the typed value stays put, so this doubles as the text
+ * fill for those fields. */
+async function fillScopedTypeahead(panel: HTMLElement, labelPattern: RegExp, value: string | null | undefined): Promise<boolean> {
+  if (!value) return false;
+  const target = findScopedInput(panel, labelPattern);
+  if (!(target instanceof HTMLInputElement)) return fillScopedField(panel, labelPattern, value);
+  const ok = await fillTypeaheadCombobox(target, value);
+  markField(target, "high");
+  return ok;
 }
 
 const MONTHS: Record<string, number> = {
@@ -301,9 +319,13 @@ export async function fillWorkExperienceSection(entries: WorkExperienceEntry[]):
 
 export async function fillEducationSection(entries: EducationEntry[]): Promise<number> {
   return addEntriesAndFill(/^education$/i, entries, async (panel, entry) => {
-    fillScopedField(panel, /school|institution|university/i, entry.institution);
+    // School and Field of Study are typeahead comboboxes on many tenants
+    // ("Type in name of school and press enter to search"), so plain text
+    // fills left them blank/erroring - drive them as typeaheads.
+    await fillScopedTypeahead(panel, /school|institution|university/i, entry.institution);
     await fillScopedDegree(panel, entry.degree);
-    fillScopedField(panel, /field of study|major/i, entry.field_of_study);
+    await fillScopedTypeahead(panel, /field of study|major/i, entry.field_of_study);
+    fillScopedField(panel, /overall result|\bgpa\b|grade point/i, entry.gpa);
     fillPanelDates(panel, entry.start_date, entry.end_date, false);
   });
 }

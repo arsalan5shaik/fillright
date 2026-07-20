@@ -139,11 +139,11 @@ describe("fillEducationSection", () => {
     });
 
     const filled = await fillEducationSection([
-      { institution: "Riverdale College", degree: "B.S. Computer Science", field_of_study: null, start_date: null, end_date: null },
+      { institution: "Riverdale College", degree: "B.S. Computer Science", field_of_study: null, gpa: null, start_date: null, end_date: null },
     ]);
 
     expect(filled).toBe(1);
     expect((document.getElementById("school") as HTMLInputElement).value).toBe("Riverdale College");
     expect((document.getElementById("degree") as HTMLInputElement).value).toBe("B.S. Computer Science");
-  });
+  }, 8000);
 });
