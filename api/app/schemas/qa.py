@@ -16,3 +16,18 @@ class ResolveQuestionResponse(BaseModel):
 
 class UpdateAnswerRequest(BaseModel):
     answer_text: str
+
+
+class ResolveChoiceRequest(BaseModel):
+    question_text: str
+    options: list[str]
+
+
+class ResolveChoiceResponse(BaseModel):
+    # Exactly one of the request's options (server-snapped), or null if the AI
+    # couldn't pick a sensible one.
+    answer: str | None = None
+
+
+class ChoiceAnswer(BaseModel):
+    answer: str

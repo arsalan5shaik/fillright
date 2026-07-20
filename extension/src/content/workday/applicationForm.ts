@@ -6,6 +6,7 @@ import { runComboboxFillPass, runFillPass, type ValueProvider } from "./fillEngi
 import { answerFirstOptionQuestions, isAutoFirstOptionQuestion } from "./firstOptionQuestions";
 import { runQaPass } from "./qaPass";
 import { fillEducationSection, fillWebsitesSection, fillWorkExperienceSection, type WebsiteEntry } from "./repeatableSections";
+import { runRequiredFieldFallback } from "./requiredFields";
 import { fillSkillsQuestion } from "./skillsQuestion";
 import { showProgress, showStatus } from "./statusUi";
 import { buildValueProvider } from "./valueProvider";
@@ -186,10 +187,16 @@ export async function runApplicationFormFill(): Promise<void> {
     runResumeFileAttach(),
     runCoverLetterFileAttach(),
   ]);
-  const stillUnfilled = result.unmatched - attempted - skillsAnswered;
+
+  // Last: any REQUIRED dropdown/radio still empty gets an AI-chosen answer
+  // from its own options (sensitive/legal questions get a safe decline/skip),
+  // so a required field never blocks submission. Marked "please review".
+  const requiredFilled = await runRequiredFieldFallback();
+
+  const stillUnfilled = result.unmatched - attempted - skillsAnswered - requiredFilled;
   showProgress(
     `Filled ${totalFilled} confidently, ${totalGuessed} guessed (please review), ` +
-      `${attempted} answered via your answer bank/AI (please review), ` +
+      `${attempted} answered via your answer bank/AI, ${requiredFilled} required field(s) AI-answered (please review), ` +
       `${Math.max(stillUnfilled, 0)} left for you to fill in. ${fileAttachStatus} ${coverLetterAttachStatus} ` +
       `Review everything before clicking Submit yourself - FillRight never submits for you.`,
     100,

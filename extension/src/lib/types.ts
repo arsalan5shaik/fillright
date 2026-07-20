@@ -92,6 +92,10 @@ export interface ResolvedAnswer {
 }
 
 export type ResolveQuestionMessage = { type: "RESOLVE_QUESTION"; questionText: string };
+export type ResolveChoiceMessage = { type: "RESOLVE_CHOICE"; questionText: string; options: string[] };
+export interface ResolvedChoice {
+  answer: string | null;
+}
 export type UpdateAnswerMessage = { type: "UPDATE_ANSWER"; answerId: string; answerText: string };
 export type DeleteAnswerMessage = { type: "DELETE_ANSWER"; answerId: string };
 

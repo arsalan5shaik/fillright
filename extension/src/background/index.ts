@@ -6,6 +6,7 @@ import {
   getCoverLetterFile,
   getDefaultResumeProfileId,
   getTailoredResumeFile,
+  resolveChoice,
   resolveQuestion,
   tailorResume,
   updateAnswer,
@@ -14,6 +15,7 @@ import { getValidSession } from "../lib/session";
 import type {
   AutofillData,
   ResolvedAnswer,
+  ResolvedChoice,
   ScannedJobPosting,
   StoredSession,
   TailoredResumeFilePayload,
@@ -25,6 +27,7 @@ type BridgeMessage =
   | { type: "SCAN_JOB_POSTING"; posting: ScannedJobPosting }
   | { type: "GET_AUTOFILL_DATA" }
   | { type: "RESOLVE_QUESTION"; questionText: string }
+  | { type: "RESOLVE_CHOICE"; questionText: string; options: string[] }
   | { type: "UPDATE_ANSWER"; answerId: string; answerText: string }
   | { type: "DELETE_ANSWER"; answerId: string }
   | { type: "GET_TAILORED_RESUME_FILE" }
@@ -108,6 +111,12 @@ chrome.runtime.onMessage.addListener((message: BridgeMessage, sender, sendRespon
   }
   if (message.type === "RESOLVE_QUESTION") {
     void withSession<ResolvedAnswer>((token) => resolveQuestion(token, message.questionText)).then(sendResponse);
+    return true;
+  }
+  if (message.type === "RESOLVE_CHOICE") {
+    void withSession<ResolvedChoice>((token) => resolveChoice(token, message.questionText, message.options)).then(
+      sendResponse,
+    );
     return true;
   }
   if (message.type === "UPDATE_ANSWER") {

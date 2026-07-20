@@ -224,6 +224,22 @@ export async function resolveQuestion(accessToken: string, questionText: string)
   return { answerId: body.answer_id, answerText: body.answer_text, source: body.source, similarity: body.similarity };
 }
 
+/** AI picks one of a required dropdown/radio's actual options when FillRight
+ * has no mapped answer. Returns the chosen option (already snapped to the real
+ * set by the backend) or null. */
+export async function resolveChoice(
+  accessToken: string,
+  questionText: string,
+  options: string[],
+): Promise<{ answer: string | null }> {
+  const res = await apiFetch(accessToken, "/qa/resolve-choice", {
+    method: "POST",
+    body: JSON.stringify({ question_text: questionText, options }),
+  });
+  if (!res.ok) throw new Error(`qa/resolve-choice failed: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
 export async function updateAnswer(accessToken: string, answerId: string, answerText: string): Promise<void> {
   const res = await apiFetch(accessToken, `/qa/answers/${answerId}`, {
     method: "PATCH",

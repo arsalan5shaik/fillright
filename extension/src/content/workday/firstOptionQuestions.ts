@@ -67,17 +67,40 @@ export async function answerFirstOptionQuestions(): Promise<number> {
     const label = getAssociatedLabelText(input);
     if (!label || !isAutoFirstOptionQuestion(label)) continue;
 
-    openDropdown(input);
+    // Retry the whole open+drill: a single open doesn't always render the
+    // option list, which used to leave the field blank (and it would then
+    // wrongly fall through to the free-text pass).
+    let committed = false;
+    for (let attempt = 0; attempt < 2 && !committed; attempt++) {
+      openDropdown(input);
 
-    let clickedAny = false;
-    for (let depth = 0; depth < 5; depth++) {
-      const option = await waitFor(findFirstVisibleOption, depth === 0 ? 1500 : 500);
-      if (!option) break;
-      option.click();
-      clickedAny = true;
+      // Drill through nested category levels, taking the first option each
+      // time. Track the last option's TEXT (not element identity - Workday
+      // re-renders the list) so we stop instead of re-clicking the same leaf.
+      let lastText: string | null = null;
+      let clicked = false;
+      for (let depth = 0; depth < 6; depth++) {
+        const option = await waitFor(findFirstVisibleOption, depth === 0 ? 1500 : 500);
+        const text = option?.textContent?.trim() ?? null;
+        if (!option || text === lastText) break;
+        option.click();
+        lastText = text;
+        clicked = true;
+      }
+
+      // Committed when we clicked something and the option list has closed
+      // (a leaf selection collapses the menu).
+      if (clicked) {
+        const stillOpen = await waitFor(() => (findFirstVisibleOption() ? true : null), 400);
+        committed = !stillOpen;
+      }
+      if (!committed) {
+        input.blur();
+        await waitFor(() => (findFirstVisibleOption() ? null : true), 300);
+      }
     }
 
-    if (clickedAny) answered++;
+    if (committed) answered++;
   }
 
   return answered;

@@ -5,9 +5,21 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.core.auth import CurrentUser, get_current_user
 from app.core.config import get_settings
 from app.db.postgrest import user_scoped_client
-from app.schemas.qa import ResolveQuestionRequest, ResolveQuestionResponse, UpdateAnswerRequest
-from app.services.llm.client import call_embedding, call_text
-from app.services.qa_resolver import build_qa_prompt, embedding_to_pgvector_literal
+from app.schemas.qa import (
+    ChoiceAnswer,
+    ResolveChoiceRequest,
+    ResolveChoiceResponse,
+    ResolveQuestionRequest,
+    ResolveQuestionResponse,
+    UpdateAnswerRequest,
+)
+from app.services.llm.client import call_embedding, call_structured, call_text
+from app.services.qa_resolver import (
+    build_choice_prompt,
+    build_qa_prompt,
+    embedding_to_pgvector_literal,
+    snap_to_option,
+)
 
 router = APIRouter(prefix="/qa", tags=["qa"])
 
@@ -73,6 +85,22 @@ def resolve_question(
         row = insert_resp.json()[0]
 
     return ResolveQuestionResponse(answer_id=row["id"], answer_text=answer_text, source="llm_generated", similarity=None)
+
+
+@router.post("/resolve-choice", response_model=ResolveChoiceResponse)
+def resolve_choice(
+    body: ResolveChoiceRequest, user: CurrentUser = Depends(get_current_user)
+) -> ResolveChoiceResponse:
+    """Picks one of a required dropdown/radio's actual options via the AI, for
+    a required field FillRight has no mapped answer to. The extension is
+    responsible for NOT calling this on sensitive/EEO/legal questions (those
+    get a safe non-AI default instead)."""
+    if not body.options:
+        return ResolveChoiceResponse(answer=None)
+    result = call_structured(
+        "qa_resolver", build_choice_prompt(body.question_text, body.options), ChoiceAnswer, user_id=user.id
+    )
+    return ResolveChoiceResponse(answer=snap_to_option(result.answer, body.options))
 
 
 @router.patch("/answers/{answer_id}", response_model=ResolveQuestionResponse)

@@ -179,6 +179,21 @@ export async function selectComboboxOption(
   return false;
 }
 
+/** Opens a listbox combobox, reads its option texts, then closes it again -
+ * used by the required-field AI fallback to learn a dropdown's actual options
+ * before asking the model to pick one. */
+export async function readComboboxOptions(button: HTMLButtonElement): Promise<string[]> {
+  button.click(); // open
+  await waitFor(() => (firstVisibleOption() ? true : null), 1500);
+  const options = Array.from(document.querySelectorAll<HTMLElement>('[role="option"]'))
+    .filter(isVisible)
+    .map((o) => o.textContent?.trim() ?? "")
+    .filter(Boolean);
+  if (findFilterInput(button)) button.click(); // close so the caller can re-open cleanly
+  await waitFor(() => (findFilterInput(button) ? null : true), 300);
+  return options;
+}
+
 /** Typeahead combobox: an <input> where you type a query, Workday fetches
  * matching role="option"s, and you pick one - distinct from the listbox
  * combobox (button trigger). Used for School / Field of Study ("type and
