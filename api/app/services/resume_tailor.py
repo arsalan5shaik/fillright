@@ -1,3 +1,5 @@
+import re
+
 from app.schemas.jd_analysis import JDAnalysis
 from app.schemas.resume import ParsedResume
 from app.schemas.tailored_resume import ResumeCritique, TailoredResume
@@ -8,11 +10,12 @@ def _normalize(value: str | None) -> str:
     return (value or "").strip().lower()
 
 
-def validate_no_fabrication(tailored: TailoredResume, source: ParsedResume) -> list[str]:
-    """Mechanical backstop for the never-fabricate guardrail: every tailored
-    work-experience entry's company+title must match a source entry exactly,
-    and its dates must match that same entry's dates. Reject/retry rather
-    than trust the prompt alone."""
+def validate_structure(tailored: TailoredResume, source: ParsedResume) -> list[str]:
+    """Mechanical backstop: every tailored work-experience entry's company+title
+    must match a source entry exactly, its dates must match, and it must keep at
+    least as many bullets as the source (the tailoring sometimes collapsed two
+    bullets into one, dropping quantified achievements). Reject/retry rather
+    than trust the prompt."""
     violations: list[str] = []
     source_by_key = {(_normalize(e.company), _normalize(e.title)): e for e in source.work_experience}
 
@@ -26,17 +29,84 @@ def validate_no_fabrication(tailored: TailoredResume, source: ParsedResume) -> l
             )
             continue
         if _normalize(entry.start_date) != _normalize(source_entry.start_date):
-            violations.append(
-                f"Start date changed for {entry.company}: "
-                f"{entry.start_date!r} vs source {source_entry.start_date!r}"
-            )
+            violations.append(f"Start date changed for {entry.company}")
         if _normalize(entry.end_date) != _normalize(source_entry.end_date):
+            violations.append(f"End date changed for {entry.company}")
+        if len(entry.bullets) < len(source_entry.bullets):
             violations.append(
-                f"End date changed for {entry.company}: "
-                f"{entry.end_date!r} vs source {source_entry.end_date!r}"
+                f"'{entry.company} - {entry.title}' has {len(entry.bullets)} bullets but the "
+                f"source has {len(source_entry.bullets)} - keep every bullet (do not merge or drop any)"
             )
 
     return violations
+
+
+# Preserve backward-compatible name used elsewhere/tests.
+validate_no_fabrication = validate_structure
+
+
+# Generic skill/verb terms that a JD lists but that aren't a specific technology
+# a candidate must "have" - fine to use when rewording, so not treated as
+# fabrication if they appear in tailored bullets without being in the source.
+_GENERIC_SKILL_TERMS = {
+    "software engineering", "software development", "software development lifecycle",
+    "debugging", "testing", "development", "design", "documentation", "analysis",
+    "troubleshooting", "communication", "collaboration", "agile", "problem solving",
+    "coding", "monitoring", "automation", "root cause analysis", "health monitoring",
+    "configuration", "delivery", "services", "apis", "rest", "rest apis", "cloud",
+    "scheduling", "timing", "learning", "verbal communication", "written communication",
+    "distributed computing", "distributed systems", "microservice architecture",
+    "prompt engineering", "ai", "ai-driven tools", "networking", "database",
+}
+
+
+def _source_blob(source: ParsedResume) -> str:
+    parts = [*source.skills]
+    for e in source.work_experience:
+        parts.append(e.title)
+        parts.extend(e.bullets)
+    parts.extend(f"{e.degree or ''} {e.field_of_study or ''}" for e in source.education)
+    return " ".join(parts).lower()
+
+
+def _keyword_terms(keyword: str) -> list[str]:
+    """A JD keyword plus any tech-symbol sub-token (c#, c++, .net, node.js) so a
+    keyword like 'C#/.NET programming' is still matched by its 'C#/.NET' core."""
+    terms = [keyword.strip().lower()]
+    for word in re.split(r"[\s,/]+", keyword):
+        wl = word.strip().lower()
+        if wl and re.search(r"[#+]|\.\w", wl):
+            terms.append(wl)
+    return [t for t in terms if t]
+
+
+def find_fabricated_skills(tailored: TailoredResume, source: ParsedResume, jd_analysis: JDAnalysis) -> list[str]:
+    """JD keywords that show up in the tailored bullets but nowhere in the source
+    résumé - i.e. a technology the candidate doesn't actually have, injected to
+    match the JD (observed live: a Java/Spring dev's bullets rewritten as
+    'C#/.NET'). Generic verbs/nouns are excluded so ordinary rewording isn't
+    flagged."""
+    blob = _source_blob(source)
+    tailored_text = " ".join(b for e in tailored.work_experience for b in e.bullets).lower()
+    fabricated: list[str] = []
+    for keyword in {k.term for k in jd_analysis.keywords}:
+        if keyword.strip().lower() in _GENERIC_SKILL_TERMS:
+            continue
+        for term in _keyword_terms(keyword):
+            if len(term) >= 2 and term in tailored_text and term not in blob:
+                fabricated.append(keyword.strip())
+                break
+    return fabricated
+
+
+# A parenthetical longer than this is almost certainly the critique's meta-note
+# ("(scope aligned to existing team projects; avoided implying ownership…)")
+# rather than a legitimate inline note like "(AWS)" - strip it from the bullet.
+_META_PAREN = re.compile(r"\s*\([^)]{25,}\)")
+
+
+def _clean_bullet(text: str) -> str:
+    return _META_PAREN.sub("", text).strip()
 
 
 def _build_prompt(source: ParsedResume, jd_analysis: JDAnalysis) -> str:
@@ -46,24 +116,25 @@ def _build_prompt(source: ParsedResume, jd_analysis: JDAnalysis) -> str:
         "Tailor this résumé for the job description analyzed below. This is a "
         "substantive rewrite of the work-experience bullet points - genuinely "
         "reword them so each prior role clearly speaks to THIS job's "
-        "responsibilities and required skills. For each role: lead with the "
-        "most relevant work, use the JD's own terminology for skills the "
-        "candidate genuinely has, and frame accomplishments to foreground "
-        "impact relevant to this role. Make it impressive but believable for "
-        "the candidate's ACTUAL role, seniority, and company.\n\n"
+        "responsibilities, using the JD's own terminology ONLY for skills the "
+        "candidate genuinely has. Make it impressive but believable for the "
+        "candidate's ACTUAL role, seniority, and company.\n\n"
         "Rules for staying honest and concise:\n"
-        "- Keep the SAME number of bullets per role, each about the same "
-        "length as the original, so the résumé still fits its original page "
-        "count. Do NOT add a professional summary or any new section (leave "
-        "summary null).\n"
-        "- Preserve real metrics; never inflate a number or invent a new one.\n"
+        "- Keep the SAME number of bullets per role (never merge two into one or "
+        "drop any), each about the original length, so it fits the same page "
+        "count. Do NOT add a professional summary or new section (summary null).\n"
+        "- Preserve real metrics; never inflate or invent a number.\n"
         "- Do NOT copy sentences from the job description verbatim.\n"
-        "- Do NOT claim skills, tools, responsibilities, or achievements the "
-        "candidate's original résumé gives no basis for - reword what's there, "
-        "don't add what isn't.\n\n"
-        "HARD CONSTRAINT: every company name, job title, and start/end date in "
-        "your output must exactly match an entry in the source résumé, "
-        "verbatim. Never invent, merge, or alter employers, titles, or dates.\n\n"
+        "- CRITICAL: never introduce a technology, tool, framework, language, or "
+        "platform the candidate's source résumé does not mention. If the JD "
+        "wants a skill the candidate lacks, do NOT claim it - keep their real "
+        "technologies (e.g. do not turn a Java/Spring engineer's work into "
+        "'C#/.NET'). Reword what's there; add nothing that isn't.\n"
+        "- Each bullet is FINAL résumé text: no parenthetical notes or "
+        "commentary about your edits.\n\n"
+        "HARD CONSTRAINT: every company name, job title, and start/end date must "
+        "match the source résumé verbatim. Never invent, merge, or alter "
+        "employers, titles, or dates.\n\n"
         f"Required JD keywords: {', '.join(required_keywords) or 'none specified'}\n"
         f"Nice-to-have JD keywords: {', '.join(nice_to_have) or 'none specified'}\n"
         f"Seniority: {jd_analysis.seniority or 'not specified'}\n\n"
@@ -82,21 +153,21 @@ def _build_critique_prompt(
     return (
         f"You are the hiring recruiter for the {job_title or 'open'} role at "
         f"{company}. Below is (1) the role's key requirements, (2) the "
-        "candidate's ORIGINAL résumé, and (3) a TAILORED version rewritten to "
-        "target your role. Scrutinize each tailored work-experience bullet the "
-        "way a skeptical recruiter who checks references would. For the "
-        "candidate's actual role (the company, title, and seniority shown in "
-        "the ORIGINAL résumé), is each tailored bullet believable - or does it "
-        "overreach: claiming scope, seniority, ownership, tools, or impact that "
-        "role wouldn't plausibly have, or that the original résumé gives no "
-        "basis for?\n\n"
-        "For every work-experience entry, return each bullet with: the bullet "
-        "text (original field), plausible=true/false, and a revised version. "
-        "If it's plausible, set revised equal to the bullet unchanged. If it's "
-        "NOT plausible, revise it DOWN to something believable for that actual "
-        "role - still relevant to the job and well-phrased, but honest. Never "
-        "inflate a bullet. Keep company and title for each entry exactly as in "
-        "the tailored résumé.\n\n"
+        "candidate's ORIGINAL résumé, and (3) a TAILORED version. Scrutinize each "
+        "tailored work-experience bullet the way a skeptical recruiter who checks "
+        "references would. For the candidate's actual role (company, title, "
+        "seniority in the ORIGINAL résumé), is each tailored bullet believable, or "
+        "does it overreach - claiming scope, seniority, ownership, or especially "
+        "TOOLS/TECHNOLOGIES the original résumé gives no basis for?\n\n"
+        "Return, for every entry, each bullet with: the bullet text (original "
+        "field), plausible=true/false, and a revised version. If plausible, "
+        "revised equals the bullet unchanged. If NOT plausible (or it claims a "
+        "technology the candidate doesn't actually have), revise it DOWN to "
+        "something believable using only the candidate's real skills. IMPORTANT: "
+        "the revised field must be ONLY the final résumé bullet text - no notes, "
+        "no parentheses explaining what you changed, no meta-commentary. Return "
+        "the SAME number of bullets per entry as given. Keep company and title "
+        "exactly as in the tailored résumé.\n\n"
         f"Role requirements: {', '.join(required_keywords) or 'none specified'}; "
         f"seniority {jd_analysis.seniority or 'not specified'}.\n\n"
         f"Original résumé (JSON): {source.model_dump_json()}\n\n"
@@ -105,20 +176,32 @@ def _build_critique_prompt(
 
 
 def _apply_critique(tailored: TailoredResume, critique: ResumeCritique) -> TailoredResume:
-    """Replaces each tailored entry's bullets with the recruiter-revised ones,
-    matched by company+title. Entries the critique didn't cover keep their
-    bullets unchanged."""
+    """Replaces each tailored entry's bullets with the recruiter-revised ones
+    (cleaned of any leaked meta-notes), matched by company+title. Guards against
+    the critique dropping bullets: only swaps in the revised set if it has at
+    least as many bullets."""
     revised_by_key: dict[tuple[str, str], list[str]] = {}
     for entry in critique.entries:
         key = (_normalize(entry.company), _normalize(entry.title))
-        revised_by_key[key] = [b.revised.strip() for b in entry.bullets if b.revised.strip()]
+        revised_by_key[key] = [_clean_bullet(b.revised) for b in entry.bullets if _clean_bullet(b.revised)]
 
     result = tailored.model_copy(deep=True)
     for entry in result.work_experience:
         key = (_normalize(entry.company), _normalize(entry.title))
         revised = revised_by_key.get(key)
-        if revised:
+        if revised and len(revised) >= len(entry.bullets):
             entry.bullets = revised
+    return result
+
+
+def _tailor_with_retry(prompt: str, source: ParsedResume, user_id: str) -> TailoredResume:
+    result = call_structured("resume_tailoring", prompt, TailoredResume, user_id=user_id)
+    violations = validate_structure(result, source)
+    if violations:
+        retry_prompt = prompt + "\n\nYour previous attempt violated these rules - fix them: " + "; ".join(violations)
+        result = call_structured("resume_tailoring", retry_prompt, TailoredResume, user_id=user_id)
+        if validate_structure(result, source):
+            raise ValueError("Resume tailoring failed the guardrail after retry")
     return result
 
 
@@ -131,32 +214,26 @@ def tailor_resume(
     user_id: str,
 ) -> TailoredResume:
     prompt = _build_prompt(source, jd_analysis)
-    result = call_structured("resume_tailoring", prompt, TailoredResume, user_id=user_id)
+    result = _tailor_with_retry(prompt, source, user_id)
 
-    violations = validate_no_fabrication(result, source)
-    if violations:
-        retry_prompt = (
-            prompt
-            + "\n\nYour previous attempt violated the hard constraint above in these "
-            "ways - fix them exactly by using the source resume's company names, "
-            "titles, and dates verbatim: " + "; ".join(violations)
+    # De-fabricate: if any JD skill leaked into the bullets without being in the
+    # source résumé, redo the tailoring with those terms explicitly forbidden.
+    fabricated = find_fabricated_skills(result, source, jd_analysis)
+    if fabricated:
+        fix_prompt = prompt + (
+            "\n\nYour previous attempt claimed skills/technologies the candidate's "
+            "résumé gives NO basis for: " + ", ".join(fabricated) + ". Remove every one "
+            "and never imply the candidate used them - use only their real "
+            "technologies from the source résumé."
         )
-        result = call_structured("resume_tailoring", retry_prompt, TailoredResume, user_id=user_id)
-        violations = validate_no_fabrication(result, source)
-        if violations:
-            raise ValueError(
-                "Resume tailoring failed the fabrication guardrail after retry: " + "; ".join(violations)
-            )
+        result = _tailor_with_retry(fix_prompt, source, user_id)
 
-    # Recruiter self-critique: a second model, role-playing the recruiter for
-    # this specific job, judges each rewritten bullet's plausibility for the
-    # candidate's actual prior role and tones down any overreach. The mechanical
-    # fabrication guardrail still runs on the revised output as the hard
-    # backstop - if the critique somehow altered a company/title/date, we fall
-    # back to the pre-critique version (which already passed).
+    # Recruiter self-critique on the (de-fabricated) result: tones down any
+    # remaining overreach. validate_structure runs on the revised output as the
+    # hard backstop - fall back to the pre-critique version if it regressed.
     critique_prompt = _build_critique_prompt(result, source, jd_analysis, company, job_title)
     critique = call_structured("resume_critique", critique_prompt, ResumeCritique, user_id=user_id)
     revised = _apply_critique(result, critique)
-    if not validate_no_fabrication(revised, source):
+    if not validate_structure(revised, source):
         return revised
     return result
