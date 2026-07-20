@@ -61,7 +61,7 @@ export default function ResumeEditor({
       ...d,
       education: [
         ...d.education,
-        { institution: "", degree: null, field_of_study: null, start_date: null, end_date: null },
+        { institution: "", degree: null, field_of_study: null, gpa: null, start_date: null, end_date: null },
       ],
     }));
   }
@@ -167,6 +167,32 @@ export default function ResumeEditor({
               onChange={(e) => updateEducation(i, "field_of_study", e.target.value)}
             />
           </label>
+          <label>
+            GPA
+            <input
+              value={edu.gpa ?? ""}
+              placeholder="e.g. 3.8"
+              onChange={(e) => updateEducation(i, "gpa", e.target.value)}
+            />
+          </label>
+          <div className="row">
+            <label style={{ flex: 1 }}>
+              From
+              <input
+                value={edu.start_date ?? ""}
+                placeholder="e.g. 2022"
+                onChange={(e) => updateEducation(i, "start_date", e.target.value)}
+              />
+            </label>
+            <label style={{ flex: 1 }}>
+              To
+              <input
+                value={edu.end_date ?? ""}
+                placeholder="e.g. 2026"
+                onChange={(e) => updateEducation(i, "end_date", e.target.value)}
+              />
+            </label>
+          </div>
           <button type="button" onClick={() => removeEducation(i)}>
             Remove
           </button>

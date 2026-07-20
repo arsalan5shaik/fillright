@@ -21,6 +21,7 @@ export interface Education {
   institution: string;
   degree: string | null;
   field_of_study: string | null;
+  gpa: string | null;
   start_date: string | null;
   end_date: string | null;
 }
