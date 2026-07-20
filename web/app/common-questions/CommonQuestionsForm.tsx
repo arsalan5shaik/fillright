@@ -92,23 +92,23 @@ export default function CommonQuestionsForm({
   return (
     <div>
       {Object.entries(grouped).map(([category, qs]) => (
-        <fieldset key={category} style={{ marginBottom: 16 }}>
-          <legend>{category.replace(/_/g, " ")}</legend>
+        <div key={category} className="card">
+          <h2 style={{ textTransform: "capitalize" }}>{category.replace(/_/g, " ")}</h2>
           {qs.map((q) => (
-            <div key={q.id} style={{ marginBottom: 12 }}>
-              <label>
-                {q.question_text}
-                {q.is_sensitive && " (voluntary)"}
-                {renderInput(q, values[q.id] ?? "", (v) => update(q.id, v))}
-              </label>
-            </div>
+            <label key={q.id}>
+              {q.question_text}
+              {q.is_sensitive && <span className="badge" style={{ marginLeft: 6 }}>Voluntary</span>}
+              {renderInput(q, values[q.id] ?? "", (v) => update(q.id, v))}
+            </label>
           ))}
-        </fieldset>
+        </div>
       ))}
-      <button onClick={handleSaveAll} disabled={saving}>
-        {saving ? "Saving..." : "Save all"}
-      </button>
-      {message && <p>{message}</p>}
+      <div className="row">
+        <button className="btn-primary" onClick={handleSaveAll} disabled={saving}>
+          {saving ? "Saving..." : "Save all answers"}
+        </button>
+        {message && <span className="card-muted">{message}</span>}
+      </div>
     </div>
   );
 }

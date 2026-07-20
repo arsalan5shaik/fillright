@@ -43,35 +43,41 @@ export default function JobPreferencesForm({ initialValues }: { initialValues: R
 
   return (
     <div>
-      {FIELDS.map((f) => (
-        <div key={f.key}>
-          <label htmlFor={f.key}>{f.label}</label>
-          {f.type === "select" ? (
-            <select
-              id={f.key}
-              value={values[f.key] ?? ""}
-              onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
-            >
-              {f.options!.map((o) => (
-                <option key={o} value={o}>
-                  {o || "—"}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <input
-              id={f.key}
-              placeholder={f.placeholder}
-              value={values[f.key] ?? ""}
-              onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
-            />
-          )}
-        </div>
-      ))}
+      <div className="form-grid">
+        {FIELDS.map((f) => (
+          <label key={f.key} htmlFor={f.key}>
+            {f.label}
+            {f.type === "select" ? (
+              <select
+                id={f.key}
+                value={values[f.key] ?? ""}
+                onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
+              >
+                {f.options!.map((o) => (
+                  <option key={o} value={o}>
+                    {o || "—"}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                id={f.key}
+                placeholder={f.placeholder}
+                value={values[f.key] ?? ""}
+                onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
+              />
+            )}
+          </label>
+        ))}
+      </div>
       <button className="btn-primary" onClick={handleSave} disabled={saving}>
         {saving ? "Saving…" : "Save preferences"}
       </button>
-      {message && <p className="card-muted" style={{ marginTop: 10 }}>{message}</p>}
+      {message && (
+        <p className="card-muted" style={{ marginTop: 10, marginBottom: 0 }}>
+          {message}
+        </p>
+      )}
     </div>
   );
 }

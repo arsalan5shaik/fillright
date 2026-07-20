@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { CommonAnswer, CommonQuestion } from "@/lib/types";
@@ -28,16 +27,15 @@ export default async function CommonQuestionsPage() {
   const answers: CommonAnswer[] = answersRes.ok ? await answersRes.json() : [];
 
   return (
-    <main style={{ padding: 24, maxWidth: 640 }}>
-      <p>
-        <Link href="/">Back home</Link>
-      </p>
+    <main>
       <h1>Common questions</h1>
-      <p>
-        Answer these once and every application autofill reuses them. Voluntary questions default to
-        &quot;decline to answer&quot; — change them only if you want to disclose.
+      <p className="muted">
+        Answer these once and every application autofill reuses them. Voluntary questions default to &quot;decline to
+        answer&quot; — change them only if you want to disclose.
       </p>
-      <CommonQuestionsForm questions={questions ?? []} initialAnswers={answers} />
+      <div style={{ marginTop: 20 }}>
+        <CommonQuestionsForm questions={questions ?? []} initialAnswers={answers} />
+      </div>
     </main>
   );
 }

@@ -30,7 +30,7 @@ export default function ApplicationRow({ application }: { application: Applicati
   }
 
   return (
-    <tr style={{ borderBottom: "1px solid #333" }}>
+    <tr>
       <td>{application.company}</td>
       <td>{application.job_title ?? "-"}</td>
       <td>{new Date(application.created_at).toLocaleDateString()}</td>

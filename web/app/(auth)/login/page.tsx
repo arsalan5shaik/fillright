@@ -38,9 +38,14 @@ export default function LoginPage() {
   }
 
   return (
-    <main style={{ padding: 24, maxWidth: 360 }}>
+    <main className="card auth-card">
+      <div className="auth-brand">
+        <span className="brand-logo">F</span>
+        <span className="auth-brand-name">FillRight</span>
+      </div>
       <h1>Log in</h1>
-      <form onSubmit={handlePasswordLogin}>
+      <p className="card-muted">Welcome back — sign in to manage your résumé and answers.</p>
+      <form onSubmit={handlePasswordLogin} style={{ marginTop: 16 }}>
         <label>
           Email
           <input
@@ -59,15 +64,23 @@ export default function LoginPage() {
             required
           />
         </label>
-        <button type="submit" disabled={loading}>
-          Log in
+        <button type="submit" className="btn-primary" style={{ width: "100%" }} disabled={loading}>
+          {loading ? "Logging in…" : "Log in"}
         </button>
       </form>
-      <button onClick={handleMagicLink} disabled={loading || !email}>
+      <button
+        onClick={handleMagicLink}
+        style={{ width: "100%", marginTop: 10 }}
+        disabled={loading || !email}
+      >
         Send magic link instead
       </button>
-      {message && <p>{message}</p>}
-      <p>
+      {message && (
+        <p className="card-muted" style={{ marginTop: 12 }}>
+          {message}
+        </p>
+      )}
+      <p className="card-muted" style={{ marginTop: 16, marginBottom: 0 }}>
         No account? <a href="/signup">Sign up</a>
       </p>
     </main>

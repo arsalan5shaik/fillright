@@ -80,161 +80,185 @@ export default function ResumeEditor({
 
   return (
     <div>
-      <h2>Contact</h2>
-      <label>
-        Full name
-        <input
-          value={data.contact.full_name ?? ""}
-          onChange={(e) => updateContact("full_name", e.target.value)}
-        />
-      </label>
-      <label>
-        Email
-        <input value={data.contact.email ?? ""} onChange={(e) => updateContact("email", e.target.value)} />
-      </label>
-      <label>
-        Phone
-        <input value={data.contact.phone ?? ""} onChange={(e) => updateContact("phone", e.target.value)} />
-      </label>
-      <label>
-        LinkedIn
-        <input
-          value={data.contact.linkedin_url ?? ""}
-          onChange={(e) => updateContact("linkedin_url", e.target.value)}
-        />
-      </label>
+      <div className="card">
+        <h2>Contact</h2>
+        <div className="form-grid">
+          <label>
+            Full name
+            <input
+              value={data.contact.full_name ?? ""}
+              onChange={(e) => updateContact("full_name", e.target.value)}
+            />
+          </label>
+          <label>
+            Email
+            <input value={data.contact.email ?? ""} onChange={(e) => updateContact("email", e.target.value)} />
+          </label>
+          <label>
+            Phone
+            <input value={data.contact.phone ?? ""} onChange={(e) => updateContact("phone", e.target.value)} />
+          </label>
+          <label>
+            LinkedIn
+            <input
+              value={data.contact.linkedin_url ?? ""}
+              onChange={(e) => updateContact("linkedin_url", e.target.value)}
+            />
+          </label>
+        </div>
+      </div>
 
-      <h2>Work experience</h2>
-      {data.work_experience.map((exp, i) => (
-        <fieldset key={i} style={{ marginBottom: 12 }}>
-          <label>
-            Company
-            <input value={exp.company} onChange={(e) => updateExperience(i, "company", e.target.value)} />
-          </label>
-          <label>
-            Title
-            <input value={exp.title} onChange={(e) => updateExperience(i, "title", e.target.value)} />
-          </label>
-          <label>
-            Start
-            <input
-              value={exp.start_date ?? ""}
-              onChange={(e) => updateExperience(i, "start_date", e.target.value)}
-            />
-          </label>
-          <label>
-            End
-            <input
-              value={exp.end_date ?? ""}
-              onChange={(e) => updateExperience(i, "end_date", e.target.value)}
-            />
-          </label>
-          <label>
-            Bullets (one per line)
-            <textarea
-              rows={4}
-              value={exp.bullets.join("\n")}
-              onChange={(e) => updateExperience(i, "bullets", e.target.value.split("\n"))}
-            />
-          </label>
-          <button type="button" onClick={() => removeExperience(i)}>
-            Remove
+      <div className="card">
+        <div className="section-head">
+          <h2>Work experience</h2>
+          <button type="button" className="btn-sm" onClick={addExperience}>
+            + Add experience
           </button>
-        </fieldset>
-      ))}
-      <button type="button" onClick={addExperience}>
-        Add experience
-      </button>
-
-      <h2>Education</h2>
-      {data.education.map((edu, i) => (
-        <fieldset key={i} style={{ marginBottom: 12 }}>
-          <label>
-            Institution
-            <input
-              value={edu.institution}
-              onChange={(e) => updateEducation(i, "institution", e.target.value)}
-            />
-          </label>
-          <label>
-            Degree
-            <input value={edu.degree ?? ""} onChange={(e) => updateEducation(i, "degree", e.target.value)} />
-          </label>
-          <label>
-            Field of study
-            <input
-              value={edu.field_of_study ?? ""}
-              onChange={(e) => updateEducation(i, "field_of_study", e.target.value)}
-            />
-          </label>
-          <label>
-            GPA
-            <input
-              value={edu.gpa ?? ""}
-              placeholder="e.g. 3.8"
-              onChange={(e) => updateEducation(i, "gpa", e.target.value)}
-            />
-          </label>
-          <div className="row">
-            <label style={{ flex: 1 }}>
-              From
-              <input
-                value={edu.start_date ?? ""}
-                placeholder="e.g. 2022"
-                onChange={(e) => updateEducation(i, "start_date", e.target.value)}
-              />
-            </label>
-            <label style={{ flex: 1 }}>
-              To
-              <input
-                value={edu.end_date ?? ""}
-                placeholder="e.g. 2026"
-                onChange={(e) => updateEducation(i, "end_date", e.target.value)}
-              />
-            </label>
+        </div>
+        {data.work_experience.length === 0 && (
+          <p className="empty">No work experience yet — add your roles so FillRight can autofill them.</p>
+        )}
+        {data.work_experience.map((exp, i) => (
+          <div key={i} className="entry">
+            <div className="form-grid">
+              <label>
+                Company
+                <input value={exp.company} onChange={(e) => updateExperience(i, "company", e.target.value)} />
+              </label>
+              <label>
+                Title
+                <input value={exp.title} onChange={(e) => updateExperience(i, "title", e.target.value)} />
+              </label>
+              <label>
+                Start
+                <input
+                  value={exp.start_date ?? ""}
+                  onChange={(e) => updateExperience(i, "start_date", e.target.value)}
+                />
+              </label>
+              <label>
+                End
+                <input
+                  value={exp.end_date ?? ""}
+                  onChange={(e) => updateExperience(i, "end_date", e.target.value)}
+                />
+              </label>
+              <label className="full">
+                Bullets (one per line)
+                <textarea
+                  rows={4}
+                  value={exp.bullets.join("\n")}
+                  onChange={(e) => updateExperience(i, "bullets", e.target.value.split("\n"))}
+                />
+              </label>
+            </div>
+            <button type="button" className="btn-sm btn-danger" onClick={() => removeExperience(i)}>
+              Remove
+            </button>
           </div>
-          <button type="button" onClick={() => removeEducation(i)}>
-            Remove
+        ))}
+      </div>
+
+      <div className="card">
+        <div className="section-head">
+          <h2>Education</h2>
+          <button type="button" className="btn-sm" onClick={addEducation}>
+            + Add education
           </button>
-        </fieldset>
-      ))}
-      <button type="button" onClick={addEducation}>
-        Add education
-      </button>
+        </div>
+        {data.education.length === 0 && (
+          <p className="empty">No education yet — add your schools, degrees, and GPA.</p>
+        )}
+        {data.education.map((edu, i) => (
+          <div key={i} className="entry">
+            <div className="form-grid">
+              <label className="full">
+                Institution
+                <input
+                  value={edu.institution}
+                  onChange={(e) => updateEducation(i, "institution", e.target.value)}
+                />
+              </label>
+              <label>
+                Degree
+                <input value={edu.degree ?? ""} onChange={(e) => updateEducation(i, "degree", e.target.value)} />
+              </label>
+              <label>
+                Field of study
+                <input
+                  value={edu.field_of_study ?? ""}
+                  onChange={(e) => updateEducation(i, "field_of_study", e.target.value)}
+                />
+              </label>
+              <label>
+                GPA
+                <input
+                  value={edu.gpa ?? ""}
+                  placeholder="e.g. 3.8"
+                  onChange={(e) => updateEducation(i, "gpa", e.target.value)}
+                />
+              </label>
+              <label>
+                From
+                <input
+                  value={edu.start_date ?? ""}
+                  placeholder="e.g. 2022"
+                  onChange={(e) => updateEducation(i, "start_date", e.target.value)}
+                />
+              </label>
+              <label>
+                To
+                <input
+                  value={edu.end_date ?? ""}
+                  placeholder="e.g. 2026"
+                  onChange={(e) => updateEducation(i, "end_date", e.target.value)}
+                />
+              </label>
+            </div>
+            <button type="button" className="btn-sm btn-danger" onClick={() => removeEducation(i)}>
+              Remove
+            </button>
+          </div>
+        ))}
+      </div>
 
-      <h2>Skills</h2>
-      <input
-        value={data.skills.join(", ")}
-        onChange={(e) =>
-          setData((d) => ({
-            ...d,
-            skills: e.target.value
-              .split(",")
-              .map((s) => s.trim())
-              .filter(Boolean),
-          }))
-        }
-      />
+      <div className="card">
+        <h2>Skills</h2>
+        <p className="card-muted">Comma-separated. Used to fill &quot;Skills&quot; fields on applications.</p>
+        <input
+          value={data.skills.join(", ")}
+          onChange={(e) =>
+            setData((d) => ({
+              ...d,
+              skills: e.target.value
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean),
+            }))
+          }
+        />
 
-      <h2>Certifications</h2>
-      <input
-        value={data.certifications.join(", ")}
-        onChange={(e) =>
-          setData((d) => ({
-            ...d,
-            certifications: e.target.value
-              .split(",")
-              .map((s) => s.trim())
-              .filter(Boolean),
-          }))
-        }
-      />
+        <h2 style={{ marginTop: 16 }}>Certifications</h2>
+        <p className="card-muted">Comma-separated.</p>
+        <input
+          value={data.certifications.join(", ")}
+          onChange={(e) =>
+            setData((d) => ({
+              ...d,
+              certifications: e.target.value
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean),
+            }))
+          }
+        />
+      </div>
 
-      <div style={{ marginTop: 16 }}>
-        <button onClick={handleSave} disabled={saving}>
-          {saving ? "Saving..." : "Save"}
+      <div className="row">
+        <button className="btn-primary" onClick={handleSave} disabled={saving}>
+          {saving ? "Saving..." : "Save résumé"}
         </button>
-        {message && <span style={{ marginLeft: 8 }}>{message}</span>}
+        {message && <span className="card-muted">{message}</span>}
       </div>
     </div>
   );

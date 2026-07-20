@@ -24,9 +24,14 @@ export default function SignupPage() {
   }
 
   return (
-    <main style={{ padding: 24, maxWidth: 360 }}>
-      <h1>Sign up</h1>
-      <form onSubmit={handleSignup}>
+    <main className="card auth-card">
+      <div className="auth-brand">
+        <span className="brand-logo">F</span>
+        <span className="auth-brand-name">FillRight</span>
+      </div>
+      <h1>Create your account</h1>
+      <p className="card-muted">Set up your profile once — FillRight autofills every Workday application.</p>
+      <form onSubmit={handleSignup} style={{ marginTop: 16 }}>
         <label>
           Email
           <input
@@ -46,12 +51,16 @@ export default function SignupPage() {
             required
           />
         </label>
-        <button type="submit" disabled={loading}>
-          Sign up
+        <button type="submit" className="btn-primary" style={{ width: "100%" }} disabled={loading}>
+          {loading ? "Creating account…" : "Sign up"}
         </button>
       </form>
-      {message && <p>{message}</p>}
-      <p>
+      {message && (
+        <p className="card-muted" style={{ marginTop: 12 }}>
+          {message}
+        </p>
+      )}
+      <p className="card-muted" style={{ marginTop: 16, marginBottom: 0 }}>
         Already have an account? <a href="/login">Log in</a>
       </p>
     </main>

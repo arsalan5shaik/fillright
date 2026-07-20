@@ -18,6 +18,9 @@ const FIELD_LABELS: Record<string, string> = {
   github_url: "GitHub URL",
 };
 
+// Fields that read better spanning the full width of the 2-column grid.
+const FULL_WIDTH = new Set(["address_line1", "address_line2", "linkedin_url", "portfolio_url", "github_url"]);
+
 export default function ProfileFieldsForm({ initialValues }: { initialValues: Record<string, string> }) {
   const supabase = createClient();
   const [values, setValues] = useState(initialValues);
@@ -49,20 +52,26 @@ export default function ProfileFieldsForm({ initialValues }: { initialValues: Re
   }
 
   return (
-    <div style={{ maxWidth: 360 }}>
-      {Object.keys(FIELD_LABELS).map((key) => (
-        <label key={key} style={{ display: "block", marginBottom: 8 }}>
-          {FIELD_LABELS[key]}
-          <input
-            value={values[key] ?? ""}
-            onChange={(e) => setValues((v) => ({ ...v, [key]: e.target.value }))}
-          />
-        </label>
-      ))}
-      <button onClick={handleSave} disabled={saving}>
-        {saving ? "Saving..." : "Save"}
+    <div>
+      <div className="form-grid">
+        {Object.keys(FIELD_LABELS).map((key) => (
+          <label key={key} className={FULL_WIDTH.has(key) ? "full" : undefined}>
+            {FIELD_LABELS[key]}
+            <input
+              value={values[key] ?? ""}
+              onChange={(e) => setValues((v) => ({ ...v, [key]: e.target.value }))}
+            />
+          </label>
+        ))}
+      </div>
+      <button className="btn-primary" onClick={handleSave} disabled={saving}>
+        {saving ? "Saving..." : "Save contact details"}
       </button>
-      {message && <p>{message}</p>}
+      {message && (
+        <p className="card-muted" style={{ marginTop: 10, marginBottom: 0 }}>
+          {message}
+        </p>
+      )}
     </div>
   );
 }

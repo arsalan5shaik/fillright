@@ -17,22 +17,33 @@ export default async function ResumePage() {
     .order("updated_at", { ascending: false })
     .returns<ResumeProfileSummary[]>();
 
+  const list = profiles ?? [];
+
   return (
-    <main style={{ padding: 24, maxWidth: 480 }}>
-      <p>
-        <Link href="/">Back home</Link>
-      </p>
-      <h1>Your resumes</h1>
-      <UploadForm />
-      <ul>
-        {(profiles ?? []).map((p) => (
-          <li key={p.id}>
-            <Link href={`/resume/${p.id}`}>{p.profile_name}</Link>
-            {p.is_default && " (default)"}
-          </li>
-        ))}
-      </ul>
-      {(profiles ?? []).length === 0 && <p>No resumes uploaded yet.</p>}
+    <main>
+      <h1>Your résumés</h1>
+      <p className="muted">Upload a résumé — FillRight parses your work history, education, and skills to autofill from.</p>
+
+      <div className="card" style={{ marginTop: 20 }}>
+        <h2>Upload a résumé</h2>
+        <UploadForm />
+      </div>
+
+      <div className="card">
+        <h2>Saved résumés</h2>
+        {list.length === 0 ? (
+          <p className="empty">No résumés uploaded yet — upload one above to get started.</p>
+        ) : (
+          <ul className="link-list">
+            {list.map((p) => (
+              <li key={p.id}>
+                <Link href={`/resume/${p.id}`}>{p.profile_name}</Link>
+                {p.is_default && <span className="badge">Default</span>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </main>
   );
 }

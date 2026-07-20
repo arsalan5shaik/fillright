@@ -236,6 +236,171 @@ button.btn-primary {
   gap: 10px;
   flex-wrap: wrap;
 }
+
+/* Auth (login / signup) */
+.auth-card {
+  max-width: 400px;
+  margin: 6vh auto 0;
+}
+.auth-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.auth-brand .brand-logo {
+  width: 34px;
+  height: 34px;
+  font-size: 1.05rem;
+}
+.auth-brand-name {
+  font-weight: 700;
+  font-size: 1.15rem;
+  letter-spacing: -0.01em;
+}
+
+/* Two-column form grid; full-width cells opt in with .full */
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 16px;
+}
+.form-grid .full {
+  grid-column: 1 / -1;
+}
+@media (max-width: 520px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Section header with a trailing action (e.g. Add) */
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.section-head h2,
+.section-head h3 {
+  margin: 0;
+}
+
+/* Button sizes + variants */
+.btn-sm {
+  padding: 5px 11px;
+  font-size: 0.85rem;
+}
+.btn-danger {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 30%, var(--border));
+  background: transparent;
+}
+.btn-danger:hover {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+}
+
+/* Muted back link above a page title */
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.88rem;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+
+/* Repeatable entry sub-card inside a section card */
+.entry {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+/* Checkbox + label on one line (overrides the stacked form defaults) */
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.check-row input {
+  width: auto;
+  margin: 0;
+}
+.check-row label {
+  margin: 0;
+  font-weight: 500;
+  color: var(--text);
+}
+
+/* Table */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+.table th {
+  text-align: left;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  font-weight: 600;
+  padding: 0 12px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.table td {
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.table tr:last-child td {
+  border-bottom: none;
+}
+.table select {
+  margin: 0;
+  width: auto;
+}
+
+/* Link list (résumé profiles) */
+.link-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.link-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 2px;
+  border-bottom: 1px solid var(--border);
+}
+.link-list li:last-child {
+  border-bottom: none;
+}
+
+/* Small pill/badge */
+.badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+
+/* Empty state */
+.empty {
+  color: var(--muted);
+  text-align: center;
+  padding: 28px 12px;
+}
 .status-pill {
   display: inline-flex;
   align-items: center;

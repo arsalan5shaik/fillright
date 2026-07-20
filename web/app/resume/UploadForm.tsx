@@ -47,19 +47,25 @@ export default function UploadForm() {
   }
 
   return (
-    <form onSubmit={handleUpload} style={{ marginBottom: 24, maxWidth: 360 }}>
-      <label>
-        Profile name
-        <input value={profileName} onChange={(e) => setProfileName(e.target.value)} />
-      </label>
-      <label>
-        Resume file (PDF or DOCX)
-        <input ref={fileInputRef} type="file" accept=".pdf,.docx" />
-      </label>
-      <button type="submit" disabled={loading}>
-        {loading ? "Uploading..." : "Upload"}
+    <form onSubmit={handleUpload}>
+      <div className="form-grid">
+        <label>
+          Profile name
+          <input value={profileName} onChange={(e) => setProfileName(e.target.value)} />
+        </label>
+        <label>
+          Résumé file (PDF or DOCX)
+          <input ref={fileInputRef} type="file" accept=".pdf,.docx" />
+        </label>
+      </div>
+      <button type="submit" className="btn-primary" disabled={loading}>
+        {loading ? "Uploading..." : "Upload & parse"}
       </button>
-      {message && <p>{message}</p>}
+      {message && (
+        <p className="card-muted" style={{ marginTop: 10, marginBottom: 0 }}>
+          {message}
+        </p>
+      )}
     </form>
   );
 }

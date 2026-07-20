@@ -23,12 +23,15 @@ export default async function ResumeDetailPage({ params }: { params: Promise<{ i
   }
 
   return (
-    <main style={{ padding: 24, maxWidth: 640 }}>
-      <p>
-        <Link href="/resume">Back to resumes</Link>
-      </p>
+    <main>
+      <Link href="/resume" className="back-link">
+        ← Back to résumés
+      </Link>
       <h1>{profile.profile_name}</h1>
-      <ResumeEditor resumeId={profile.id} initialData={profile.parsed_json} />
+      <p className="muted">Review and correct what FillRight parsed — this is what gets autofilled.</p>
+      <div style={{ marginTop: 20 }}>
+        <ResumeEditor resumeId={profile.id} initialData={profile.parsed_json} />
+      </div>
     </main>
   );
 }

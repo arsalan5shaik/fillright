@@ -39,28 +39,38 @@ export default function WorkdayCredentialsForm({
   }
 
   return (
-    <div style={{ maxWidth: 360 }}>
-      <label style={{ display: "block", marginBottom: 8 }}>
-        Email
-        <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" />
-      </label>
-      <label style={{ display: "block", marginBottom: 8 }}>
-        Password
-        <input value={password} onChange={(e) => setPassword(e.target.value)} type={showPassword ? "text" : "password"} />
-      </label>
-      <label style={{ display: "block", marginBottom: 8 }}>
+    <div>
+      <div className="form-grid">
+        <label>
+          Email
+          <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" />
+        </label>
+        <label>
+          Password
+          <input
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            type={showPassword ? "text" : "password"}
+          />
+        </label>
+      </div>
+      <div className="check-row">
         <input
+          id="show-workday-password"
           type="checkbox"
           checked={showPassword}
           onChange={(e) => setShowPassword(e.target.checked)}
-          style={{ display: "inline", width: "auto", marginRight: 6 }}
         />
-        Show password
-      </label>
-      <button onClick={handleSave} disabled={saving || !email || !password}>
-        {saving ? "Saving..." : "Save"}
+        <label htmlFor="show-workday-password">Show password</label>
+      </div>
+      <button className="btn-primary" onClick={handleSave} disabled={saving || !email || !password}>
+        {saving ? "Saving..." : "Save credentials"}
       </button>
-      {message && <p>{message}</p>}
+      {message && (
+        <p className="card-muted" style={{ marginTop: 10, marginBottom: 0 }}>
+          {message}
+        </p>
+      )}
     </div>
   );
 }

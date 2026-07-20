@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import ApplicationRow, { type ApplicationWithDocs } from "./ApplicationRow";
@@ -46,30 +45,32 @@ export default async function ApplicationsPage() {
   );
 
   return (
-    <main style={{ padding: 24, maxWidth: 800 }}>
-      <p>
-        <Link href="/">Back home</Link>
-      </p>
+    <main>
       <h1>Your applications</h1>
-      {withDocs.length === 0 && <p>No applications yet - scan a job posting with the extension to get started.</p>}
-      {withDocs.length > 0 && (
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ textAlign: "left", borderBottom: "1px solid #666" }}>
-              <th>Company</th>
-              <th>Role</th>
-              <th>Applied</th>
-              <th>Status</th>
-              <th>Documents</th>
-            </tr>
-          </thead>
-          <tbody>
-            {withDocs.map((app) => (
-              <ApplicationRow key={app.id} application={app} />
-            ))}
-          </tbody>
-        </table>
-      )}
+      <p className="muted">Every posting you&apos;ve scanned, with its tailored résumé and cover letter.</p>
+
+      <div className="card" style={{ marginTop: 20, overflowX: "auto" }}>
+        {withDocs.length === 0 ? (
+          <p className="empty">No applications yet — scan a job posting with the extension to get started.</p>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Company</th>
+                <th>Role</th>
+                <th>Applied</th>
+                <th>Status</th>
+                <th>Documents</th>
+              </tr>
+            </thead>
+            <tbody>
+              {withDocs.map((app) => (
+                <ApplicationRow key={app.id} application={app} />
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </main>
   );
 }
