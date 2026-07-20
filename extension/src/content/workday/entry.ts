@@ -2,7 +2,6 @@ import type { ScanProgressMessage } from "../../lib/types";
 import { isWizardStep, looksLikeApplicationForm, runApplicationFormFill } from "./applicationForm";
 import { findApplyButton, findApplyManuallyButton } from "./applyButton";
 import { detectJobPosting } from "./detect";
-import { getAssociatedLabelText } from "./formUtils";
 import { showProgress, showStartButton, showStatus } from "./statusUi";
 
 const posting = detectJobPosting();
@@ -46,22 +45,34 @@ if (posting && !isWizardStep()) {
  * no Start re-click needed - which was the core "doesn't re-fill on the next
  * page" complaint. */
 let modalHandled = false;
-let lastFillSignature: string | null = null;
+// True while a fill pass is in flight. The fill pass takes several seconds
+// and mutates the DOM heavily (adds Work Experience/Education panels, fills
+// fields, attaches the résumé); those mutations retrigger the MutationObserver.
+// Without this mutex a second fill launched on top of the first, which caused
+// the résumé to attach 3x and the Websites section to duplicate LinkedIn
+// across slots. Never start a fill while one is running.
+let filling = false;
+// Steps already filled once, keyed by a STABLE id (below). A step is filled
+// exactly once - re-running it is what produced the duplicates.
+const handledSteps = new Set<string>();
 
-/** Fingerprints the current step by its field labels, not a heading or the
- * URL - Workday tenants commonly keep a persistent job-title heading (and
- * sometimes the same URL) visible across every wizard step via client-side
- * routing, so either of those alone can look unchanged from one step to the
- * next even though the actual fields on the page are completely different. */
-function currentStepSignature(): string {
-  const labels = Array.from(document.querySelectorAll<HTMLElement>("input, select, textarea"))
-    .slice(0, 25)
-    .map((el) => getAssociatedLabelText(el) ?? "")
-    .join("|");
-  return labels;
+/** A stable id for the current wizard step that does NOT change as the fill
+ * pass mutates the page. Workday wraps each apply-flow step in an element
+ * whose data-automation-id starts with "applyFlow" (e.g. applyFlowMyExpPage)
+ * - that id is constant across a step's own field changes, unlike a
+ * field-label fingerprint (whose change mid-fill was exactly what retriggered
+ * the pass). Falls back to the step heading + path for tenants without that
+ * wrapper. */
+function currentStepId(): string {
+  const applyFlow = document.querySelector('[data-automation-id^="applyFlow"]');
+  if (applyFlow) return applyFlow.getAttribute("data-automation-id") ?? "applyFlow";
+  const heading = document.querySelector("h1, h2, h3")?.textContent?.trim() ?? "";
+  return `${heading}::${window.location.pathname}`;
 }
 
 function evaluateApplicationFlow(): void {
+  if (filling) return; // a fill is in flight - never start a second concurrently
+
   // Modal handling runs even before we're "inside" the flow, since the
   // "Start Your Application" modal appears on the posting page right after
   // Apply is clicked, before the wizard wrapper renders.
@@ -79,10 +90,13 @@ function evaluateApplicationFlow(): void {
   // is a secondary guard against firing on an empty/transitional render.
   if (!isWizardStep() || !looksLikeApplicationForm()) return;
 
-  const signature = currentStepSignature();
-  if (signature === lastFillSignature) return;
-  lastFillSignature = signature;
-  void runApplicationFormFill();
+  const stepId = currentStepId();
+  if (handledSteps.has(stepId)) return; // already filled this step once
+  handledSteps.add(stepId);
+  filling = true;
+  void runApplicationFormFill().finally(() => {
+    filling = false;
+  });
 }
 
 let debounceTimer: ReturnType<typeof setTimeout> | undefined;

@@ -276,8 +276,10 @@ async function addEntriesAndFill<T>(
       if (!appeared) break;
     }
 
-    const panels = findPanels(container);
-    const panel = panels[panels.length - 1];
+    // Fill the i-th panel, not the last one: if a step pre-renders more
+    // default panels than there are entries, panels[length-1] would skip the
+    // early ones (leaving slot 1 blank while filling later slots).
+    const panel = findPanels(container)[i];
     if (!panel) continue;
 
     await fillEntry(panel, entries[i]);

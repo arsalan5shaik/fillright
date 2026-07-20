@@ -118,13 +118,22 @@ export async function runApplicationFormFill(): Promise<void> {
 
   await answerFirstOptionQuestions();
 
+  const seenUrls = new Set<string>();
   const websiteEntries: WebsiteEntry[] = (
     [
       { label: "LinkedIn", url: autofillResponse.data.profileFields.linkedin_url },
       { label: "Portfolio", url: autofillResponse.data.profileFields.portfolio_url },
       { label: "GitHub", url: autofillResponse.data.profileFields.github_url },
     ] as { label: string; url: string | undefined }[]
-  ).filter((entry): entry is WebsiteEntry => Boolean(entry.url));
+  ).filter((entry): entry is WebsiteEntry => {
+    // De-duplicate by URL: users commonly put the same link (e.g. LinkedIn) in
+    // more than one profile field, which previously filled the same URL into
+    // multiple Website slots.
+    const url = entry.url?.trim().toLowerCase();
+    if (!url || seenUrls.has(url)) return false;
+    seenUrls.add(url);
+    return true;
+  });
 
   // Sequential, not Promise.all - each of these clicks a button and waits
   // out a re-render on the same page; running them concurrently risked one
