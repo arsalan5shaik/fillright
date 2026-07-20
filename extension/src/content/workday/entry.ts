@@ -1,10 +1,52 @@
-import type { AutofillData, JobAnalyzedMessage, ScanProgressMessage } from "../../lib/types";
+import type {
+  AutofillData,
+  JobAnalyzedMessage,
+  ScanProgressMessage,
+  TailoredResumeFilePayload,
+} from "../../lib/types";
 import { isWizardStep, looksLikeApplicationForm, runApplicationFormFill } from "./applicationForm";
 import { findApplyButton, findApplyManuallyButton } from "./applyButton";
 import { detectJobPosting } from "./detect";
-import { setBadge, setJobCard, setKeywords, showProgress, showStartButton, showStatus } from "./statusUi";
+import {
+  collapseToLauncher,
+  setBadge,
+  setJobCard,
+  setKeywords,
+  setResume,
+  showProgress,
+  showStartButton,
+  showStatus,
+} from "./statusUi";
 
 type AutofillDataResponse = { ok: true; data: AutofillData } | { ok: false; error: string };
+type TailoredResumeFileResponse =
+  | { ok: true; data: TailoredResumeFilePayload | null }
+  | { ok: false; error: string };
+
+// Autofill drives Workday specifically. The panel/launcher may also appear on
+// other ATS hosts (see manifest matches) so the user can reach their profile,
+// but the scan + Start flow is gated to Workday to avoid implying autofill
+// works somewhere it hasn't been built/verified yet.
+const onWorkday = /(^|\.)myworkdayjobs\.com$/i.test(location.hostname);
+
+/** Opens the most recently tailored résumé PDF in a new tab. Wired to the
+ * panel's Preview buttons. The content script can't fetch the private-bucket
+ * object itself (no host clearance), so it asks the background for the bytes. */
+function previewTailoredResume(): void {
+  // Open the blank tab synchronously so it counts as opened within the click
+  // gesture (avoids the popup blocker), then navigate it once the PDF arrives.
+  const tab = window.open("", "_blank");
+  chrome.runtime.sendMessage({ type: "GET_TAILORED_RESUME_FILE" }, (resp: TailoredResumeFileResponse) => {
+    if (chrome.runtime.lastError || !resp?.ok || !resp.data) {
+      tab?.close();
+      showStatus("Your tailored résumé is still generating - give it a few seconds, then try Preview again.");
+      return;
+    }
+    const url = URL.createObjectURL(resp.data.blob);
+    if (tab) tab.location.href = url;
+    else window.open(url, "_blank", "noopener");
+  });
+}
 
 const posting = detectJobPosting();
 
@@ -13,7 +55,7 @@ const posting = detectJobPosting();
 // through Workday's SPA so detectJobPosting() stays truthy inside the flow
 // too, which is exactly what used to make the Start button wrongly reappear
 // mid-wizard and block auto-fill.
-if (posting && !isWizardStep()) {
+if (posting && onWorkday && !isWizardStep()) {
   setBadge("Ready", "ready");
   setJobCard(posting.company, posting.jobTitle, []);
 
@@ -21,7 +63,9 @@ if (posting && !isWizardStep()) {
     if (message.type === "SCAN_PROGRESS") {
       showProgress(message.status, message.percent);
     } else if (message.type === "JOB_ANALYZED") {
-      setJobCard(message.company, message.title || posting.jobTitle, message.tags);
+      setJobCard(message.company, message.title || posting.jobTitle, message.tags, message.salary);
+      // Résumé card with a live preview of the tailored PDF.
+      setResume(null, previewTailoredResume);
       // Populate the Keywords tab (JD keywords vs. your résumé skills).
       chrome.runtime.sendMessage({ type: "GET_AUTOFILL_DATA" }, (resp: AutofillDataResponse) => {
         if (!chrome.runtime.lastError && resp?.ok) setKeywords(resp.data.jdKeywords, resp.data.resumeSkills);
@@ -44,6 +88,15 @@ if (posting && !isWizardStep()) {
       showStatus("Couldn't find the Apply button automatically - click Apply yourself to continue.");
     }
   });
+} else if (!isWizardStep()) {
+  // A matched ATS site that isn't a live Workday posting/wizard: don't take
+  // over the corner - just leave the small launcher so FillRight is one click
+  // away when the user needs it (the close button collapses to this same
+  // launcher, fixing "X hides it and it never comes back").
+  collapseToLauncher();
+  if (!onWorkday) {
+    showStatus("FillRight autofill currently supports Workday. Open a Workday job posting to autofill, or use Profile to manage your data.");
+  }
 }
 
 /** Workday's whole application flow - the "Start Your Application" modal

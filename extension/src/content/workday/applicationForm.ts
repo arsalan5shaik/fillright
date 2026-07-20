@@ -8,7 +8,7 @@ import { runQaPass } from "./qaPass";
 import { fillEducationSection, fillWebsitesSection, fillWorkExperienceSection, type WebsiteEntry } from "./repeatableSections";
 import { runRequiredFieldFallback } from "./requiredFields";
 import { fillSkillsQuestion } from "./skillsQuestion";
-import { type ChecklistItem, setChecklist, showProgress, showStatus } from "./statusUi";
+import { type ChecklistItem, setChecklist, setKeywords, setResume, showProgress, showStatus } from "./statusUi";
 import { buildValueProvider } from "./valueProvider";
 
 /** Not the job-posting page (no JobPosting JSON-LD, checked by the caller)
@@ -56,6 +56,21 @@ type TailoredResumeFileResponse = { ok: true; data: TailoredResumeFilePayload | 
 
 function sendMessage<T>(message: unknown): Promise<T> {
   return new Promise((resolve) => chrome.runtime.sendMessage(message, resolve));
+}
+
+/** Opens the tailored résumé PDF in a new tab. The blank tab is opened up
+ * front (inside the click gesture) so the popup blocker allows it, then
+ * navigated once the background returns the bytes. */
+function previewTailoredResume(): void {
+  const tab = window.open("", "_blank");
+  void sendMessage<TailoredResumeFileResponse>({ type: "GET_TAILORED_RESUME_FILE" }).then((resp) => {
+    if (!resp || !resp.ok || !resp.data) {
+      tab?.close();
+      showStatus("Your tailored résumé is still generating - give it a few seconds, then try Preview again.");
+      return;
+    }
+    if (tab) tab.location.href = URL.createObjectURL(resp.data.blob);
+  });
 }
 
 /** No-op if there's no file input on this step (most steps don't have one)
@@ -116,6 +131,11 @@ export async function runApplicationFormFill(): Promise<void> {
     showStatus(`Error: ${autofillResponse && !autofillResponse.ok ? autofillResponse.error : "unknown error"}`);
     return;
   }
+
+  // Keep the Keywords tab and résumé preview live while filling the wizard,
+  // not just on the posting page.
+  setKeywords(autofillResponse.data.jdKeywords, autofillResponse.data.resumeSkills);
+  setResume(null, previewTailoredResume);
 
   await answerFirstOptionQuestions();
 

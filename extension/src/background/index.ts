@@ -71,6 +71,7 @@ function sendJobAnalyzed(tabId: number, application: AnalyzeApplicationResult): 
       company: application.company,
       title: application.job_title ?? "",
       tags,
+      salary: jd?.salary_range ?? null,
     })
     .catch(() => {});
 }

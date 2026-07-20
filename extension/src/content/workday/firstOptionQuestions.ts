@@ -5,14 +5,28 @@ import { getAssociatedLabelText, isVisible } from "./formUtils";
  * all - just take the first available option, drilling through however
  * many nested category levels Workday's hierarchical picker shows (e.g.
  * "How Did You Hear About Us?" -> "Advertising" -> "Advertising - Outdoor"). */
-const AUTO_FIRST_OPTION_PATTERNS: RegExp[] = [/how did you hear about us/i];
+const AUTO_FIRST_OPTION_PATTERNS: RegExp[] = [/how did you hear/i, /how you heard/i];
 
 export function isAutoFirstOptionQuestion(text: string): boolean {
   return AUTO_FIRST_OPTION_PATTERNS.some((pattern) => pattern.test(text));
 }
 
+// Workday renders "How Did You Hear About Us?" as a hierarchical *prompt*
+// widget, not a plain text field: the option rows can be role="option" OR
+// Workday's own promptOption/promptLeafNode automation-ids depending on
+// tenant. Matching all of them is what lets the drill-through work across
+// tenants (the previous input-only version never found the button-based
+// widget at all, so the field was left blank - the user reported this
+// repeatedly).
+const OPTION_SELECTOR =
+  '[role="option"], [data-automation-id="promptOption"], [data-automation-id="promptLeafNode"], [data-automation-id*="promptOption"]';
+
 function findFirstVisibleOption(): HTMLElement | null {
-  return Array.from(document.querySelectorAll<HTMLElement>('[role="option"]')).find(isVisible) ?? null;
+  return Array.from(document.querySelectorAll<HTMLElement>(OPTION_SELECTOR)).find(isVisible) ?? null;
+}
+
+function menuIsOpen(): boolean {
+  return findFirstVisibleOption() !== null;
 }
 
 function waitFor<T>(check: () => T | null, timeoutMs: number, intervalMs = 100): Promise<T | null> {
@@ -34,69 +48,117 @@ function waitFor<T>(check: () => T | null, timeoutMs: number, intervalMs = 100):
   });
 }
 
-/** Opens the dropdown - a plain .click() wasn't reliably enough to trigger
- * it live (confirmed: the field was left empty and fell through to the
- * free-text answer-bank pass instead), so this also dispatches focus and a
- * mousedown/mouseup pair in case the widget listens for one of those
- * specifically rather than click. */
-function openDropdown(input: HTMLInputElement): void {
-  input.focus();
-  input.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-  input.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-  input.click();
+/** Opens the widget's dropdown. A plain .click() wasn't reliably enough to
+ * trigger it live (confirmed: the field was left empty and fell through to
+ * the free-text answer-bank pass instead), so this also dispatches focus and
+ * a mousedown/mouseup pair in case the widget listens for one of those
+ * specifically rather than click. Works on both an <input> and a <button>/
+ * prompt trigger. */
+function openTrigger(el: HTMLElement): void {
+  el.focus();
+  el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+  el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+  el.click();
 }
 
-/** Finds empty text/search fields matching one of AUTO_FIRST_OPTION_PATTERNS
- * and clicks through their dropdown, always taking the first option at
- * every level, until no further options appear (selection committed) or a
- * safety depth cap is hit. Run before the main fill pass so the field is
- * already non-empty by the time it would otherwise be collected as an
- * "unmatched" candidate for the answer-bank/AI pass. Only counts as
- * "answered" if an option was actually clicked - the caller still excludes
- * a matched field from the free-text pass even when this fails to open
- * anything, since typing free text into a category picker is wrong
- * regardless of whether the first-option click succeeded. */
+/** Presses Escape to close a menu that stayed open (e.g. a multi-select
+ * prompt that doesn't auto-collapse after a leaf pick), so it can't cover
+ * the next field. */
+function closeMenu(el: HTMLElement): void {
+  el.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+}
+
+/** True when this trigger has no selection yet, so we should answer it.
+ * Inputs: an empty value. Prompt/button widgets: no "selected item" pill in
+ * the field wrapper and a placeholder-looking trigger ("Select One"). */
+function looksEmpty(trigger: HTMLElement, wrapper: HTMLElement | null): boolean {
+  if (trigger instanceof HTMLInputElement || trigger instanceof HTMLTextAreaElement) {
+    return trigger.value.trim() === "";
+  }
+  const scope = wrapper ?? trigger;
+  const hasPill = scope.querySelector('[data-automation-id="selectedItem"], [data-automation-id="pill"]');
+  if (hasPill) return false;
+  const text = (trigger.textContent ?? "").trim().toLowerCase();
+  return text === "" || /select one|select\.\.\.|select…|search|make a selection/.test(text);
+}
+
+/** Every plausible HDYHAU trigger on the page, de-duplicated. Covers three
+ * shapes: (1) the field wrapper whose label matches - the trigger is the
+ * button/combobox/input inside it (the button-based prompt case that the old
+ * input-only scan missed); (2) any labelled combobox button directly; and
+ * (3) labelled text/search inputs (the simple tenants + the unit tests). */
+function findTriggers(): { trigger: HTMLElement; wrapper: HTMLElement | null }[] {
+  const found: { trigger: HTMLElement; wrapper: HTMLElement | null }[] = [];
+  const seen = new Set<HTMLElement>();
+  const add = (trigger: HTMLElement | null, wrapper: HTMLElement | null) => {
+    if (!trigger || seen.has(trigger) || !isVisible(trigger)) return;
+    if (!looksEmpty(trigger, wrapper)) return;
+    seen.add(trigger);
+    found.push({ trigger, wrapper });
+  };
+
+  for (const wrapper of document.querySelectorAll<HTMLElement>('[data-automation-id^="formField-"]')) {
+    const label = getAssociatedLabelText(wrapper) ?? wrapper.textContent ?? "";
+    if (!isAutoFirstOptionQuestion(label)) continue;
+    const inner = wrapper.querySelector<HTMLElement>(
+      'button[aria-haspopup], [aria-haspopup="listbox"], [role="combobox"], input, button',
+    );
+    add(inner ?? wrapper, wrapper);
+  }
+
+  for (const el of document.querySelectorAll<HTMLElement>(
+    'input[type="text"], input[type="search"], input:not([type]), button[aria-haspopup], [aria-haspopup="listbox"], [role="combobox"]',
+  )) {
+    const label = getAssociatedLabelText(el);
+    if (label && isAutoFirstOptionQuestion(label)) add(el, el.closest('[data-automation-id^="formField-"]'));
+  }
+
+  return found;
+}
+
+/** Finds HDYHAU-style fields and clicks through their dropdown, always taking
+ * the first option at every level, until no further options appear (selection
+ * committed) or a safety cap is hit. Run before the main fill pass so the
+ * field is already non-empty by the time it would otherwise be collected as
+ * an "unmatched" candidate for the answer-bank/AI pass. Only counts as
+ * "answered" if an option was actually clicked. */
 export async function answerFirstOptionQuestions(): Promise<number> {
   let answered = 0;
 
-  const candidates = Array.from(
-    document.querySelectorAll<HTMLInputElement>('input[type="text"], input[type="search"], input:not([type])'),
-  ).filter((el) => isVisible(el) && el.value.trim() === "");
-
-  for (const input of candidates) {
-    const label = getAssociatedLabelText(input);
-    if (!label || !isAutoFirstOptionQuestion(label)) continue;
-
+  for (const { trigger } of findTriggers()) {
     // Retry the whole open+drill: a single open doesn't always render the
-    // option list, which used to leave the field blank (and it would then
-    // wrongly fall through to the free-text pass).
+    // option list, which used to leave the field blank.
     let committed = false;
     for (let attempt = 0; attempt < 2 && !committed; attempt++) {
-      openDropdown(input);
+      openTrigger(trigger);
 
       // Drill through nested category levels, taking the first option each
-      // time. Track the last option's TEXT (not element identity - Workday
-      // re-renders the list) so we stop instead of re-clicking the same leaf.
-      let lastText: string | null = null;
+      // time. Track every option's TEXT we've already clicked (not element
+      // identity - Workday re-renders the list) so we stop instead of
+      // re-clicking the same leaf or looping back to a category we already
+      // drilled from once a multi-select prompt resets to the top.
+      const seenTexts = new Set<string>();
       let clicked = false;
-      for (let depth = 0; depth < 6; depth++) {
+      for (let depth = 0; depth < 8; depth++) {
         const option = await waitFor(findFirstVisibleOption, depth === 0 ? 1500 : 500);
         const text = option?.textContent?.trim() ?? null;
-        if (!option || text === lastText) break;
+        if (!option || !text || seenTexts.has(text)) break;
         option.click();
-        lastText = text;
+        seenTexts.add(text);
         clicked = true;
       }
 
       // Committed when we clicked something and the option list has closed
       // (a leaf selection collapses the menu).
       if (clicked) {
-        const stillOpen = await waitFor(() => (findFirstVisibleOption() ? true : null), 400);
-        committed = !stillOpen;
+        const stillOpen = await waitFor(() => (menuIsOpen() ? true : null), 400);
+        if (stillOpen) closeMenu(trigger);
+        committed = true;
       }
       if (!committed) {
-        input.blur();
-        await waitFor(() => (findFirstVisibleOption() ? null : true), 300);
+        trigger.blur();
+        await waitFor(() => (menuIsOpen() ? null : true), 300);
       }
     }
 

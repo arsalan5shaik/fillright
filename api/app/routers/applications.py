@@ -72,7 +72,9 @@ def analyze_jd(body: AnalyzeJDRequest, user: CurrentUser = Depends(get_current_u
             "mentioned (city/state/country and whether remote/hybrid/onsite); "
             "employment type; and any travel or security clearance requirements. "
             "Leave fields empty/null rather than guessing if the JD doesn't specify "
-            "them.\n\n" + body.jd_text,
+            "them. Also capture the salary or pay range exactly as written "
+            "(e.g. '$120,000 - $140,000/yr' or '$60/hr') into salary_range, or "
+            "null if none is stated.\n\n" + body.jd_text,
             JDAnalysis,
             user_id=user.id,
         )

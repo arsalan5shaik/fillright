@@ -28,6 +28,7 @@ export interface AnalyzeApplicationResult {
     seniority: string | null;
     locations: { city: string | null; state: string | null; country: string | null; workplace_type: string | null }[];
     employment_type: string | null;
+    salary_range?: string | null;
   };
 }
 
@@ -35,7 +36,13 @@ export type ScanProgressMessage = { type: "SCAN_PROGRESS"; tabId: number; status
 
 /** Sent from the background to the content script after the scanned job is
  * analyzed, so the panel's job card can show location/seniority/type tags. */
-export type JobAnalyzedMessage = { type: "JOB_ANALYZED"; company: string; title: string; tags: string[] };
+export type JobAnalyzedMessage = {
+  type: "JOB_ANALYZED";
+  company: string;
+  title: string;
+  tags: string[];
+  salary?: string | null;
+};
 
 export type ScanJobPostingMessage = { type: "SCAN_JOB_POSTING"; posting: ScannedJobPosting };
 

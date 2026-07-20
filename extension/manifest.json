@@ -17,7 +17,14 @@
       "run_at": "document_idle"
     },
     {
-      "matches": ["*://*.myworkdayjobs.com/*"],
+      "matches": [
+        "*://*.myworkdayjobs.com/*",
+        "https://*.icims.com/*",
+        "https://*.oraclecloud.com/hcmUI/*",
+        "https://*.taleo.net/*",
+        "https://boards.greenhouse.io/*",
+        "https://jobs.lever.co/*"
+      ],
       "js": ["src/content/workday/entry.ts"],
       "run_at": "document_idle"
     }

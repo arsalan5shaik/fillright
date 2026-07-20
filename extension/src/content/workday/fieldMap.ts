@@ -31,13 +31,27 @@ interface FieldConceptDef {
   // Keywords matched case-insensitively against the field's associated
   // label/aria-label text - the primary, more portable matching path.
   labelKeywords: string[];
+  // Label substrings that VETO a match even if a labelKeyword hit. Needed
+  // where a broad keyword ("phone") is a substring of adjacent, differently-
+  // purposed fields ("Phone Extension", "Phone Device Type", "Country Phone
+  // Code") that must NOT receive this concept's value - live Workday put the
+  // phone number into the Phone Extension field because "phone" matched it.
+  labelExclude?: string[];
 }
 
 export const FIELD_CONCEPTS: FieldConceptDef[] = [
   { concept: "first_name", automationIdHints: ["legalname_firstname", "firstname"], labelKeywords: ["first name", "given name"] },
   { concept: "last_name", automationIdHints: ["legalname_lastname", "lastname"], labelKeywords: ["last name", "family name", "surname"] },
   { concept: "email", automationIdHints: ["email"], labelKeywords: ["email"] },
-  { concept: "phone", automationIdHints: ["phone-number", "phonenumber"], labelKeywords: ["phone"] },
+  {
+    concept: "phone",
+    automationIdHints: ["phone-number", "phonenumber"],
+    labelKeywords: ["phone", "mobile", "telephone"],
+    // "Phone Extension" (a separate, usually-blank field), "Phone Device Type"
+    // (a Mobile/Home/Work dropdown), and "Country Phone Code" (a typeahead)
+    // all contain "phone" but must never get the phone number typed into them.
+    labelExclude: ["extension", "device type", "country", "code"],
+  },
   {
     concept: "address_line1",
     automationIdHints: ["addressline1", "addresssection_addressline1"],
@@ -107,8 +121,14 @@ export function matchFieldConcept(automationId: string | null, labelText: string
   const normalizedId = (automationId ?? "").toLowerCase();
   const normalizedLabel = (labelText ?? "").toLowerCase();
 
+  // A def is vetoed when the label contains one of its exclusion substrings,
+  // regardless of which signal (id or label) would otherwise match it.
+  const isExcluded = (def: FieldConceptDef): boolean =>
+    !!def.labelExclude && !!normalizedLabel && def.labelExclude.some((term) => normalizedLabel.includes(term));
+
   if (normalizedId) {
     for (const def of FIELD_CONCEPTS) {
+      if (isExcluded(def)) continue;
       if (def.automationIdHints.some((hint) => normalizedId.includes(hint))) {
         return { concept: def.concept, matchConfidence: "high" };
       }
@@ -117,6 +137,7 @@ export function matchFieldConcept(automationId: string | null, labelText: string
 
   if (normalizedLabel) {
     for (const def of FIELD_CONCEPTS) {
+      if (isExcluded(def)) continue;
       if (def.labelKeywords.some((keyword) => normalizedLabel.includes(keyword))) {
         return { concept: def.concept, matchConfidence: "low" };
       }
