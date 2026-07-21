@@ -1,9 +1,4 @@
-import type {
-  AutofillData,
-  JobAnalyzedMessage,
-  ScanProgressMessage,
-  TailoredResumeFilePayload,
-} from "../../lib/types";
+import type { AutofillData, JobAnalyzedMessage, ScanProgressMessage } from "../../lib/types";
 import { isWizardStep, looksLikeApplicationForm, runApplicationFormFill } from "./applicationForm";
 import { findApplyButton, findApplyManuallyButton } from "./applyButton";
 import { detectJobPosting } from "./detect";
@@ -13,15 +8,14 @@ import {
   setJobCard,
   setKeywords,
   setResume,
+  showAutofillAgain,
   showProgress,
   showStartButton,
   showStatus,
 } from "./statusUi";
 
 type AutofillDataResponse = { ok: true; data: AutofillData } | { ok: false; error: string };
-type TailoredResumeFileResponse =
-  | { ok: true; data: TailoredResumeFilePayload | null }
-  | { ok: false; error: string };
+type TailoredResumeUrlResponse = { ok: true; data: string | null } | { ok: false; error: string };
 
 // Autofill drives Workday specifically. The panel/launcher may also appear on
 // other ATS hosts (see manifest matches) so the user can reach their profile,
@@ -34,17 +28,18 @@ const onWorkday = /(^|\.)myworkdayjobs\.com$/i.test(location.hostname);
  * object itself (no host clearance), so it asks the background for the bytes. */
 function previewTailoredResume(): void {
   // Open the blank tab synchronously so it counts as opened within the click
-  // gesture (avoids the popup blocker), then navigate it once the PDF arrives.
+  // gesture (avoids the popup blocker), then navigate it to the signed PDF
+  // URL once it arrives. A Blob can't be messaged across to the content script
+  // (it serializes to {}), so we open a URL, not bytes.
   const tab = window.open("", "_blank");
-  chrome.runtime.sendMessage({ type: "GET_TAILORED_RESUME_FILE" }, (resp: TailoredResumeFileResponse) => {
+  chrome.runtime.sendMessage({ type: "GET_TAILORED_RESUME_URL" }, (resp: TailoredResumeUrlResponse) => {
     if (chrome.runtime.lastError || !resp?.ok || !resp.data) {
       tab?.close();
       showStatus("Your tailored résumé is still generating - give it a few seconds, then try Preview again.");
       return;
     }
-    const url = URL.createObjectURL(resp.data.blob);
-    if (tab) tab.location.href = url;
-    else window.open(url, "_blank", "noopener");
+    if (tab) tab.location.href = resp.data;
+    else window.open(resp.data, "_blank", "noopener");
   });
 }
 
@@ -120,9 +115,15 @@ let modalHandled = false;
 // the résumé to attach 3x and the Websites section to duplicate LinkedIn
 // across slots. Never start a fill while one is running.
 let filling = false;
-// Steps already filled once, keyed by a STABLE id (below). A step is filled
-// exactly once - re-running it is what produced the duplicates.
+// Steps already filled to completion, keyed by a STABLE id (below). A step is
+// only marked handled once the fill actually DID something - so a step that
+// Workday was still rendering (fill found nothing yet) is left open to retry,
+// rather than being permanently skipped (the "second page didn't autofill"
+// report). stepAttempts caps those retries so a genuinely empty step can't
+// loop forever.
 const handledSteps = new Set<string>();
+const stepAttempts = new Map<string, number>();
+const MAX_ATTEMPTS = 5;
 
 /** A stable id for the current wizard step that does NOT change as the fill
  * pass mutates the page. Workday wraps each apply-flow step in an element
@@ -158,13 +159,47 @@ function evaluateApplicationFlow(): void {
   // is a secondary guard against firing on an empty/transitional render.
   if (!isWizardStep() || !looksLikeApplicationForm()) return;
 
+  // Manual re-trigger is available on every wizard step (see forceRefill).
+  showAutofillAgain(forceRefill);
+
   const stepId = currentStepId();
-  if (handledSteps.has(stepId)) return; // already filled this step once
-  handledSteps.add(stepId);
+  if (handledSteps.has(stepId)) return; // already filled this step to completion
+
+  const attempts = stepAttempts.get(stepId) ?? 0;
+  if (attempts >= MAX_ATTEMPTS) {
+    handledSteps.add(stepId); // give up auto-retrying; the button still works
+    return;
+  }
+  stepAttempts.set(stepId, attempts + 1);
   filling = true;
-  void runApplicationFormFill().finally(() => {
-    filling = false;
-  });
+  void runApplicationFormFill()
+    .then((result) => {
+      if (result?.didSomething || (stepAttempts.get(stepId) ?? 0) >= MAX_ATTEMPTS) {
+        handledSteps.add(stepId);
+      } else {
+        // Nothing to fill yet - Workday may still be rendering this step. A
+        // static page won't retrigger the observer, so nudge a retry.
+        setTimeout(scheduleEvaluate, 900);
+      }
+    })
+    .finally(() => {
+      filling = false;
+    });
+}
+
+/** Manual "Autofill this page again": clears the current step's handled/attempt
+ * state and re-runs the fill from wherever the user is. No-op guard if a fill
+ * is genuinely in flight, so it can't stack a concurrent pass. */
+function forceRefill(): void {
+  if (filling) {
+    showStatus("Autofill is already running on this step…");
+    return;
+  }
+  const stepId = currentStepId();
+  handledSteps.delete(stepId);
+  stepAttempts.set(stepId, 0);
+  showProgress("Re-scanning this page and autofilling…", 8);
+  evaluateApplicationFlow();
 }
 
 let debounceTimer: ReturnType<typeof setTimeout> | undefined;

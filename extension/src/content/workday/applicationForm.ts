@@ -53,23 +53,34 @@ export function isWizardStep(): boolean {
 
 type AutofillDataResponse = { ok: true; data: AutofillData } | { ok: false; error: string };
 type TailoredResumeFileResponse = { ok: true; data: TailoredResumeFilePayload | null } | { ok: false; error: string };
+type TailoredResumeUrlResponse = { ok: true; data: string | null } | { ok: false; error: string };
 
 function sendMessage<T>(message: unknown): Promise<T> {
   return new Promise((resolve) => chrome.runtime.sendMessage(message, resolve));
 }
 
+/** Rebuilds a File from the base64 PDF the background sent (a Blob can't be
+ * messaged across intact). */
+function payloadToFile(payload: TailoredResumeFilePayload): File {
+  const binary = atob(payload.base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new File([bytes], payload.filename, { type: payload.mimeType || "application/pdf" });
+}
+
 /** Opens the tailored résumé PDF in a new tab. The blank tab is opened up
  * front (inside the click gesture) so the popup blocker allows it, then
- * navigated once the background returns the bytes. */
+ * navigated to the signed URL once the background returns it. Uses a URL, not
+ * bytes, because a Blob doesn't survive messaging to the content script. */
 function previewTailoredResume(): void {
   const tab = window.open("", "_blank");
-  void sendMessage<TailoredResumeFileResponse>({ type: "GET_TAILORED_RESUME_FILE" }).then((resp) => {
+  void sendMessage<TailoredResumeUrlResponse>({ type: "GET_TAILORED_RESUME_URL" }).then((resp) => {
     if (!resp || !resp.ok || !resp.data) {
       tab?.close();
       showStatus("Your tailored résumé is still generating - give it a few seconds, then try Preview again.");
       return;
     }
-    if (tab) tab.location.href = URL.createObjectURL(resp.data.blob);
+    if (tab) tab.location.href = resp.data;
   });
 }
 
@@ -85,7 +96,7 @@ async function runResumeFileAttach(): Promise<string> {
   const response = await sendMessage<TailoredResumeFileResponse>({ type: "GET_TAILORED_RESUME_FILE" });
   if (!response || !response.ok || !response.data) return "";
 
-  injectFile(input, response.data.blob, response.data.filename);
+  injectFile(input, payloadToFile(response.data));
   return `Attached your tailored resume (${response.data.filename}).`;
 }
 
@@ -101,11 +112,11 @@ async function runCoverLetterFileAttach(): Promise<string> {
   const response = await sendMessage<TailoredResumeFileResponse>({ type: "GET_COVER_LETTER_FILE" });
   if (!response || !response.ok || !response.data) return "";
 
-  injectFile(input, response.data.blob, response.data.filename);
+  injectFile(input, payloadToFile(response.data));
   return `Attached your cover letter (${response.data.filename}).`;
 }
 
-export async function runApplicationFormFill(): Promise<void> {
+export async function runApplicationFormFill(): Promise<{ didSomething: boolean }> {
   // Create-account / sign-in step: stay almost entirely hands-off. There is
   // nothing here for FillRight to fill - email/password are user-typed - and
   // running the full fill pass (repeatable-section polling, combobox/date
@@ -121,7 +132,8 @@ export async function runApplicationFormFill(): Promise<void> {
       `${consent ? "Checked the consent box. " : ""}Enter your email and password, then click ` +
         `Create Account / Sign In yourself.`,
     );
-    return;
+    // Treated as handled (nothing more to auto-fill here) so it isn't retried.
+    return { didSomething: true };
   }
 
   showProgress("Filling application form...", 15);
@@ -129,7 +141,7 @@ export async function runApplicationFormFill(): Promise<void> {
   const autofillResponse = await sendMessage<AutofillDataResponse>({ type: "GET_AUTOFILL_DATA" });
   if (!autofillResponse || !autofillResponse.ok) {
     showStatus(`Error: ${autofillResponse && !autofillResponse.ok ? autofillResponse.error : "unknown error"}`);
-    return;
+    return { didSomething: false };
   }
 
   // Keep the Keywords tab and résumé preview live while filling the wizard,
@@ -137,7 +149,7 @@ export async function runApplicationFormFill(): Promise<void> {
   setKeywords(autofillResponse.data.jdKeywords, autofillResponse.data.resumeSkills);
   setResume(null, previewTailoredResume);
 
-  await answerFirstOptionQuestions();
+  const firstOptionAnswered = await answerFirstOptionQuestions();
 
   const seenUrls = new Set<string>();
   const websiteEntries: WebsiteEntry[] = (
@@ -228,6 +240,7 @@ export async function runApplicationFormFill(): Promise<void> {
   add("Cover letter attached", coverLetterAttachStatus.includes("Attached"));
   add(`Questions answered (${attempted})`, attempted > 0);
   add(`Screening "No" answers (${conflictOfInterestAnswered})`, conflictOfInterestAnswered > 0);
+  add(`"How did you hear" answered`, firstOptionAnswered > 0);
   add(`Required fields AI-answered (${requiredFilled})`, requiredFilled > 0);
   setChecklist(items);
 
@@ -239,4 +252,18 @@ export async function runApplicationFormFill(): Promise<void> {
       `Review everything before clicking Submit yourself - FillRight never submits for you.`,
     100,
   );
+
+  const didSomething =
+    totalFilled +
+      workExperienceFilled +
+      educationFilled +
+      websitesFilled +
+      comboboxResult.filled +
+      conflictOfInterestAnswered +
+      skillsAnswered +
+      attempted +
+      requiredFilled +
+      firstOptionAnswered >
+    0;
+  return { didSomething };
 }

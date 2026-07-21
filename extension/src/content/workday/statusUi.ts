@@ -16,6 +16,7 @@ interface PanelRefs {
   jobCard: HTMLDivElement;
   resumeCard: HTMLDivElement;
   autofillBtn: HTMLButtonElement;
+  refillBtn: HTMLButtonElement;
   progressWrap: HTMLDivElement;
   bar: HTMLDivElement;
   percent: HTMLSpanElement;
@@ -88,6 +89,9 @@ const STYLES = `
     padding:13px; border-radius:12px; background:linear-gradient(135deg,#0ea5b7,#0891b2);
     box-shadow:0 2px 6px rgba(8,145,178,0.4); display:none; }
   .autofill-btn:hover { filter:brightness(1.05); } .autofill-btn:active { transform:translateY(1px); }
+  .refill-btn { display:none; width:100%; margin-top:10px; border:1px solid #cbd5e1; background:#fff; color:#0891b2;
+    cursor:pointer; font-weight:700; font-size:13.5px; padding:11px; border-radius:11px; }
+  .refill-btn:hover { background:#f0fdff; border-color:#67e8f9; }
   .progress-wrap { display:none; margin:10px 0 6px; }
   .progress-row { display:flex; justify-content:space-between; font-size:12px; font-weight:600; color:#475569; margin-bottom:5px; }
   .track { height:8px; border-radius:999px; background:#eef2f6; overflow:hidden; }
@@ -164,6 +168,7 @@ function ensurePanel(): PanelRefs {
           <a class="tracker-link" href="${WEBSITE_URL}/applications" target="_blank" rel="noreferrer">View in job tracker →</a>
         </div>
         <button class="autofill-btn">Autofill this page</button>
+        <button class="refill-btn" data-role="refill">&#8635; Autofill this page again</button>
         <div class="progress-wrap">
           <div class="progress-row"><span>Completion</span><span data-role="percent">0%</span></div>
           <div class="track"><div class="bar"></div></div>
@@ -220,6 +225,7 @@ function readRefs(root: ShadowRoot): PanelRefs {
     jobCard: q(".job-card"),
     resumeCard: q(".resume-card"),
     autofillBtn: q(".autofill-btn"),
+    refillBtn: q(".refill-btn"),
     progressWrap: q(".progress-wrap"),
     bar: q(".bar"),
     percent: q('[data-role="percent"]'),
@@ -360,6 +366,16 @@ export function showProgress(message: string, percent: number): void {
   p.bar.style.width = `${pct}%`;
   p.percent.textContent = `${pct}%`;
   setBadge(pct >= 100 ? "Filled" : "Autofilling…", pct >= 100 ? "done" : "working");
+}
+
+/** A manual re-trigger, shown on every wizard step. Lets the user re-run the
+ * fill for the current step when Workday rendered it late or a field was
+ * missed - the fills are idempotent (only empty fields, panels reused) so a
+ * re-run won't duplicate anything. */
+export function showAutofillAgain(onClick: () => void): void {
+  const p = ensurePanel();
+  p.refillBtn.style.display = "block";
+  p.refillBtn.onclick = () => onClick();
 }
 
 /** The primary "Autofill this page" action (shown on a job-posting page). */

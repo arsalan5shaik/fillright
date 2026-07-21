@@ -121,8 +121,13 @@ export type UpdateAnswerMessage = { type: "UPDATE_ANSWER"; answerId: string; ans
 export type DeleteAnswerMessage = { type: "DELETE_ANSWER"; answerId: string };
 
 export interface TailoredResumeFilePayload {
-  blob: Blob;
+  // Base64-encoded PDF bytes, NOT a Blob: chrome.runtime.sendMessage
+  // serializes messages as JSON, so a Blob crosses to the content script as an
+  // empty {} - which is why the attached résumé was corrupt and the preview
+  // opened blank. The content script decodes this back into a File.
+  base64: string;
   filename: string;
+  mimeType: string;
 }
 
 export type GetTailoredResumeFileMessage = { type: "GET_TAILORED_RESUME_FILE" };

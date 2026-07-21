@@ -61,6 +61,33 @@ function openTrigger(el: HTMLElement): void {
   el.click();
 }
 
+/** Opens the widget's menu, trying several strategies because the HDYHAU
+ * widget varies by tenant (a listbox button showing "Select One", an input, or
+ * a prompt with a separate list icon that actually triggers the menu). Returns
+ * true once option rows are visible. */
+async function openWidget(trigger: HTMLElement, wrapper: HTMLElement | null): Promise<boolean> {
+  openTrigger(trigger);
+  if (await waitFor(findFirstVisibleOption, 800)) return true;
+
+  // The trigger might be the display input while a sibling prompt icon is what
+  // opens the hierarchical menu - click the other clickables in the wrapper.
+  if (wrapper) {
+    for (const el of Array.from(
+      wrapper.querySelectorAll<HTMLElement>('button, [role="button"], [data-automation-id*="prompt"], svg'),
+    )) {
+      if (el === trigger || !isVisible(el)) continue;
+      openTrigger(el);
+      if (await waitFor(findFirstVisibleOption, 450)) return true;
+    }
+  }
+
+  // Keyboard fallback: listbox comboboxes commonly open on ArrowDown/Enter.
+  trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+  if (await waitFor(findFirstVisibleOption, 400)) return true;
+  trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  return !!(await waitFor(findFirstVisibleOption, 400));
+}
+
 /** Presses Escape to close a menu that stayed open (e.g. a multi-select
  * prompt that doesn't auto-collapse after a leaf pick), so it can't cover
  * the next field. */
@@ -126,12 +153,17 @@ function findTriggers(): { trigger: HTMLElement; wrapper: HTMLElement | null }[]
 export async function answerFirstOptionQuestions(): Promise<number> {
   let answered = 0;
 
-  for (const { trigger } of findTriggers()) {
+  for (const { trigger, wrapper } of findTriggers()) {
     // Retry the whole open+drill: a single open doesn't always render the
     // option list, which used to leave the field blank.
     let committed = false;
     for (let attempt = 0; attempt < 2 && !committed; attempt++) {
-      openTrigger(trigger);
+      const opened = await openWidget(trigger, wrapper);
+      if (!opened) {
+        trigger.blur();
+        await waitFor(() => (menuIsOpen() ? null : true), 250);
+        continue;
+      }
 
       // Drill through nested category levels, taking the first option each
       // time. Track every option's TEXT we've already clicked (not element
@@ -141,7 +173,7 @@ export async function answerFirstOptionQuestions(): Promise<number> {
       const seenTexts = new Set<string>();
       let clicked = false;
       for (let depth = 0; depth < 8; depth++) {
-        const option = await waitFor(findFirstVisibleOption, depth === 0 ? 1500 : 500);
+        const option = await waitFor(findFirstVisibleOption, 500);
         const text = option?.textContent?.trim() ?? null;
         if (!option || !text || seenTexts.has(text)) break;
         option.click();

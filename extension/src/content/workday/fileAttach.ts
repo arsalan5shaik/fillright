@@ -73,8 +73,7 @@ export function findCoverLetterFileInput(): HTMLInputElement | null {
  * browsers for security reasons, but assigning a DataTransfer's FileList to
  * .files is the standard, well-established workaround for synthetic file
  * injection (the same mechanism used to simulate drag-and-drop uploads). */
-export function injectFile(input: HTMLInputElement, blob: Blob, filename: string): void {
-  const file = new File([blob], filename, { type: blob.type || "application/pdf" });
+export function injectFile(input: HTMLInputElement, file: File): void {
   const dataTransfer = new DataTransfer();
   dataTransfer.items.add(file);
   input.files = dataTransfer.files;

@@ -280,8 +280,22 @@ async function getSignedUrl(accessToken: string, bucket: string, path: string): 
 }
 
 export interface TailoredResumeFile {
-  blob: Blob;
+  base64: string;
   filename: string;
+  mimeType: string;
+}
+
+/** Encodes PDF bytes as base64 so they survive JSON message-passing to the
+ * content script (a Blob would arrive empty). btoa is available in the
+ * service worker; chunked to avoid a call-stack overflow on large files. */
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
 }
 
 /** The stored path's filename is just the application id (a UUID) - fine
@@ -315,7 +329,19 @@ export async function getTailoredResumeFile(accessToken: string): Promise<Tailor
 
   const blob = await pdfRes.blob();
   const filename = contact?.full_name ? `${slugifyFilename(contact.full_name)}_resume.pdf` : "resume.pdf";
-  return { blob, filename };
+  return { base64: arrayBufferToBase64(await blob.arrayBuffer()), filename, mimeType: blob.type || "application/pdf" };
+}
+
+/** A fresh signed URL to the most recent tailored résumé PDF, for opening in
+ * a new tab (preview). Returns the URL string rather than the bytes: a Blob
+ * does NOT survive chrome.runtime.sendMessage's JSON serialization between the
+ * background and content script (it arrives as {}), which is exactly why the
+ * blob-based preview opened a blank tab - the signed URL renders the PDF
+ * directly in the browser instead. */
+export async function getTailoredResumeUrl(accessToken: string): Promise<string | null> {
+  const path = await getMostRecentTailoredResumePath(accessToken);
+  if (!path) return null;
+  return getSignedUrl(accessToken, "resumes", path);
 }
 
 async function getMostRecentCoverLetterPath(accessToken: string): Promise<string | null> {
@@ -345,5 +371,5 @@ export async function getCoverLetterFile(accessToken: string): Promise<TailoredR
 
   const blob = await pdfRes.blob();
   const filename = contact?.full_name ? `${slugifyFilename(contact.full_name)}_cover_letter.pdf` : "cover_letter.pdf";
-  return { blob, filename };
+  return { base64: arrayBufferToBase64(await blob.arrayBuffer()), filename, mimeType: blob.type || "application/pdf" };
 }

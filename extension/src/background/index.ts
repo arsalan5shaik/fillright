@@ -6,6 +6,7 @@ import {
   getCoverLetterFile,
   getDefaultResumeProfileId,
   getTailoredResumeFile,
+  getTailoredResumeUrl,
   resolveChoice,
   resolveQuestion,
   tailorResume,
@@ -32,6 +33,7 @@ type BridgeMessage =
   | { type: "UPDATE_ANSWER"; answerId: string; answerText: string }
   | { type: "DELETE_ANSWER"; answerId: string }
   | { type: "GET_TAILORED_RESUME_FILE" }
+  | { type: "GET_TAILORED_RESUME_URL" }
   | { type: "GET_COVER_LETTER_FILE" };
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -160,6 +162,10 @@ chrome.runtime.onMessage.addListener((message: BridgeMessage, sender, sendRespon
   }
   if (message.type === "GET_TAILORED_RESUME_FILE") {
     void withSession<TailoredResumeFilePayload | null>((token) => getTailoredResumeFile(token)).then(sendResponse);
+    return true;
+  }
+  if (message.type === "GET_TAILORED_RESUME_URL") {
+    void withSession<string | null>((token) => getTailoredResumeUrl(token)).then(sendResponse);
     return true;
   }
   if (message.type === "GET_COVER_LETTER_FILE") {
