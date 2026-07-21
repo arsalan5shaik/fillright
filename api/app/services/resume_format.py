@@ -58,6 +58,33 @@ def _set_paragraph_text(paragraph, text: str) -> None:
         run.text = ""
 
 
+def _all_paragraphs(container) -> list:
+    """Every paragraph in the document, INCLUDING those inside tables (résumés
+    very often lay the experience section out in a borderless table, which
+    document.paragraphs alone skips - the reason in-place editing looked like a
+    no-op)."""
+    result = list(container.paragraphs)
+    for table in getattr(container, "tables", []):
+        for row in table.rows:
+            for cell in row.cells:
+                result.extend(_all_paragraphs(cell))
+    return result
+
+
+def _tokens(text: str) -> set[str]:
+    # Split on non-alphanumerics so "LLM-powered" / "~15" / "hours/week" match
+    # "llm powered" / "15" / "hours week" - punctuation differences between the
+    # parsed text and the document text otherwise tanked the similarity score.
+    return set(re.findall(r"[a-z0-9]+", _strip_bullet(_norm(text))))
+
+
+def _token_similarity(a: str, b: str) -> float:
+    ta, tb = _tokens(a), _tokens(b)
+    if not ta or not tb:
+        return 0.0
+    return len(ta & tb) / len(ta | tb)
+
+
 def tailor_docx_in_place(original: bytes, source: ParsedResume, tailored: TailoredResume) -> bytes | None:
     try:
         from docx import Document
@@ -73,27 +100,34 @@ def tailor_docx_in_place(original: bytes, source: ParsedResume, tailored: Tailor
     except Exception:
         return None
 
-    remaining = {_strip_bullet(_norm(o)): new for o, new in pairs}
-    replaced = 0
-    for paragraph in document.paragraphs:
-        para_text = _strip_bullet(_norm(paragraph.text))
-        if not para_text:
-            continue
-        match_key = next(
-            (k for k in remaining if k and (para_text == k or para_text.startswith(k[:25]) or k.startswith(para_text[:25]))),
-            None,
-        )
-        if match_key is None:
-            continue
-        # Preserve a literal bullet char if the résumé typed one into the text
-        # (rather than using Word's list formatting).
+    paragraphs = [p for p in _all_paragraphs(document) if p.text and p.text.strip()]
+
+    # Match each original bullet to its paragraph by best token-similarity
+    # (robust to the parser having lightly normalized the text). Require EVERY
+    # bullet to match confidently - if any doesn't, bail to None so the caller
+    # renders the template with fully-tailored bullets rather than leaving a
+    # partially- or un-changed file.
+    used: set[int] = set()
+    plan: list[tuple[int, str]] = []  # (paragraph index, new text)
+    for original_bullet, new_bullet in pairs:
+        best_idx, best_score = -1, 0.0
+        for idx, paragraph in enumerate(paragraphs):
+            if idx in used:
+                continue
+            score = _token_similarity(paragraph.text, original_bullet)
+            if score > best_score:
+                best_idx, best_score = idx, score
+        if best_idx < 0 or best_score < 0.6:
+            return None  # couldn't confidently place this bullet - fall back
+        used.add(best_idx)
+        plan.append((best_idx, new_bullet))
+
+    for idx, new_bullet in plan:
+        paragraph = paragraphs[idx]
         prefix_match = _BULLET_PREFIX.match(paragraph.text)
         prefix = prefix_match.group(0) if prefix_match else ""
-        _set_paragraph_text(paragraph, prefix + remaining.pop(match_key))
-        replaced += 1
+        _set_paragraph_text(paragraph, prefix + new_bullet)
 
-    if replaced == 0:
-        return None
     out = io.BytesIO()
     document.save(out)
     return out.getvalue()
@@ -180,7 +214,11 @@ def tailor_pdf_in_place(original: bytes, source: ParsedResume, tailored: Tailore
                 _write_bullet(fitz, page, union, right_edge, fontname, size, color, new_text)
                 total_replaced += 1
 
-        if total_replaced == 0:
+        # All-or-nothing: only keep the in-place PDF if EVERY changed bullet was
+        # located and rewritten; otherwise fall back to the template (which
+        # always has the fully-tailored bullets) rather than ship a file with
+        # some bullets still original.
+        if total_replaced < len(pairs):
             return None
         return doc.tobytes(deflate=True, garbage=3)
     except Exception:
