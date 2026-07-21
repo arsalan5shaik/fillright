@@ -27,3 +27,16 @@ describe("phone field concept matching", () => {
     expect(matchFieldConcept(null, "Phone Device Type")?.concept).toBe("phone_device_type");
   });
 });
+
+describe("state field concept matching", () => {
+  it("matches a real State/Province address field", () => {
+    expect(matchFieldConcept(null, "State")?.concept).toBe("state");
+    expect(matchFieldConcept(null, "State/Province")?.concept).toBe("state");
+    expect(matchFieldConcept("addresssection_region", null)?.concept).toBe("state");
+  });
+
+  it("does NOT treat the verb 'state' as the address state (live: employee-ID got Texas)", () => {
+    expect(matchFieldConcept(null, "Please state your previous employee ID number with Rolls-Royce")).toBeNull();
+    expect(matchFieldConcept(null, "Please state the reason for leaving")).toBeNull();
+  });
+});

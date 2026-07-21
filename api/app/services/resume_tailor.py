@@ -147,9 +147,24 @@ def find_fabricated_skills(tailored: TailoredResume, source: ParsedResume, jd_an
 # rather than a legitimate inline note like "(AWS)" - strip it from the bullet.
 _META_PAREN = re.compile(r"\s*\([^)]{25,}\)")
 
+# Recruiter-critique commentary that leaked into the bullet text itself (not in
+# parentheses), e.g. "…within a project scope; no direct evidence of
+# production-scale deployment or detailed controls." Strip the trailing clause.
+_LEAKED_COMMENTARY = re.compile(
+    r"\s*[;,\-–—]?\s*("
+    r"no (direct |clear |strong )?evidence|without (direct |clear )?evidence|"
+    r"cannot (be )?(verif|confirm)|unable to (verify|confirm)|not (independently )?verif|"
+    r"scope aligned|avoided implying|no basis (for|to)|beyond what|"
+    r"limited evidence|not clearly (supported|demonstrated)"
+    r")[^.]*",
+    re.IGNORECASE,
+)
+
 
 def _clean_bullet(text: str) -> str:
-    return _META_PAREN.sub("", text).strip()
+    cleaned = _META_PAREN.sub("", text)
+    cleaned = _LEAKED_COMMENTARY.sub("", cleaned)
+    return cleaned.strip().rstrip(";,-–— ").strip()
 
 
 def _overlap_skills(source: ParsedResume, jd_analysis: JDAnalysis) -> list[str]:
@@ -233,27 +248,37 @@ def _build_critique_prompt(
 ) -> str:
     required_keywords = [k.term for k in jd_analysis.keywords if k.required]
     return (
-        f"You are the hiring recruiter for the {job_title or 'open'} role at "
-        f"{company}. Below is (1) the role's key requirements, (2) the "
-        "candidate's ORIGINAL résumé, and (3) a TAILORED version. Scrutinize each "
-        "tailored work-experience bullet the way a skeptical recruiter who checks "
-        "references would. For the candidate's actual role (company, title, "
-        "seniority in the ORIGINAL résumé), is each tailored bullet believable, or "
-        "does it overreach - claiming scope, seniority, ownership, or especially "
-        "TOOLS/TECHNOLOGIES the original résumé gives no basis for?\n\n"
-        "Return, for every entry, each bullet with: the bullet text (original "
-        "field), plausible=true/false, and a revised version. If plausible, "
-        "revised equals the bullet unchanged. If NOT plausible (or it claims a "
-        "technology the candidate doesn't actually have), revise it DOWN to "
-        "something believable using only the candidate's real skills. IMPORTANT: "
-        "the revised field must be ONLY the final résumé bullet text - no notes, "
-        "no parentheses explaining what you changed, no meta-commentary. Return "
-        "the SAME number of bullets per entry as given. Keep company and title "
-        "exactly as in the tailored résumé.\n\n"
+        f"You are a senior technical recruiter and expert résumé writer hiring for "
+        f"the {job_title or 'open'} role at {company}. Review the TAILORED résumé "
+        "bullets below and REWRITE each one to be as strong, clear, and credible as "
+        "a top candidate's résumé, then return the improved version. Judge whether "
+        "each bullet is genuinely good - does it read well, make sense, and sell the "
+        "candidate - and fix it if not.\n\n"
+        "Quality bar for every revised bullet:\n"
+        "- KEEP THE METRIC. Every bullet must contain a concrete number/result. "
+        "Carry over the quantified outcome from the candidate's ORIGINAL bullet "
+        "(e.g. '~15 hours/week', '30%', '15+ jobs', '10+ event types'). NEVER delete "
+        "a number or water it down to vague wording like 'a modest amount', 'a small "
+        "scope', 'some improvement', or 'within a project scope'. If a tailored "
+        "bullet lost its number, restore it from the original bullet.\n"
+        "- Write natural, confident, human résumé prose - ONE clean sentence. Do NOT "
+        "stuff keywords or parrot the JD; a bullet overloaded with buzzwords is a "
+        "FAIL, rewrite it to sound like a real person.\n"
+        "- Remove any technology, tool, framework, language, or product that does "
+        "NOT appear anywhere in the candidate's ORIGINAL résumé (their skills OR "
+        "their original bullets). For example if a bullet says 'Beam' but the "
+        "original said 'Kafka' and lists no Beam, put back their real tool. Never "
+        "claim a domain (embedded, avionics, real-time, firmware) they never worked in.\n"
+        "- The revised field is ONLY the final résumé bullet text. Absolutely NO "
+        "meta-commentary, NO notes about your edits, NO caveats such as 'no direct "
+        "evidence of…', 'cannot verify…', or parentheses explaining changes.\n"
+        "- Keep the SAME number of bullets per entry; keep company and title exactly "
+        "as given. Set plausible=true and put the improved text in revised.\n\n"
         f"Role requirements: {', '.join(required_keywords) or 'none specified'}; "
         f"seniority {jd_analysis.seniority or 'not specified'}.\n\n"
+        f"Candidate's real skills: {', '.join(source.skills) or 'see original résumé'}\n\n"
         f"Original résumé (JSON): {source.model_dump_json()}\n\n"
-        f"Tailored résumé (JSON): {tailored.model_dump_json()}"
+        f"Tailored résumé to improve (JSON): {tailored.model_dump_json()}"
     )
 
 

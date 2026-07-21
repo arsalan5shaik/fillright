@@ -40,10 +40,24 @@ const SCREENING_DEFAULTS: { pattern: RegExp; answer: "Yes" | "No" }[] = [
     pattern: /worked (with|for|at) (us|this|our)[^?]{0,25}before|worked (here|with us) before|previously (worked|been employed)/i,
     answer: "No",
   },
+  // Family/friends at the company or other conflict of interest.
+  {
+    pattern: /(family|friends|relative)[^?]{0,80}(work|employ)|do you have any[^?]{0,40}(family|friends|relatives)|conflict of interest/i,
+    answer: "No",
+  },
+  // Current/former government or military employee.
+  { pattern: /(current or former|are you a)[^?]{0,30}(government|military)[^?]{0,20}(employee|official)?/i, answer: "No" },
+  // Pre-employment drug/alcohol test - positive or refused (DOT-style).
+  { pattern: /tested positive[^?]{0,80}(drug|alcohol|test)|refused to test/i, answer: "No" },
   // Prior-employment / relatives / government / conflict-of-interest (the No set above).
   ...AUTO_NO_PATTERNS.map((pattern) => ({ pattern, answer: "No" as const })),
   {
     pattern: /(willing|able|agree|consent) to[^?]{0,30}background check|background check[^?]{0,20}(required|consent|willing)/i,
+    answer: "Yes",
+  },
+  // Attestation/confirmation that the supplied answers are correct.
+  {
+    pattern: /I (confirm|certify|acknowledge|agree|attest|declare)|answers[^?]{0,50}(correct|accurate|up to date|complete|true)|certify that/i,
     answer: "Yes",
   },
 ];

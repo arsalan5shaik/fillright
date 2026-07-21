@@ -67,6 +67,23 @@ export const FIELD_CONCEPTS: FieldConceptDef[] = [
     concept: "state",
     automationIdHints: ["addresssection_region", "countryregion"],
     labelKeywords: ["state", "province", "region"],
+    // "state" is also a verb - "Please state your previous employee ID", "state
+    // your reason", etc. - which must NOT be filled with the user's home state
+    // (live: an employee-ID field got "Texas"). Veto the verb usages and other
+    // non-address fields that merely contain the word.
+    labelExclude: [
+      "please state",
+      "state your",
+      "state the",
+      "state if",
+      "state whether",
+      "state how",
+      "state why",
+      "state any",
+      "employee id",
+      "id number",
+      "statement",
+    ],
   },
   { concept: "zip_code", automationIdHints: ["postalcode"], labelKeywords: ["zip", "postal code"] },
   { concept: "linkedin_url", automationIdHints: ["linkedin"], labelKeywords: ["linkedin"] },
