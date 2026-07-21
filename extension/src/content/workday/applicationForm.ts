@@ -1,13 +1,13 @@
 import type { AutofillData, TailoredResumeFilePayload } from "../../lib/types";
 import { checkAccountCreationConsent, hasAccountCreationStep, isAuthStep } from "./accountCredentials";
-import { answerConflictOfInterestQuestions } from "./booleanScreeningQuestions";
+import { answerScreeningQuestions } from "./booleanScreeningQuestions";
 import { findCoverLetterFileInput, findResumeFileInput, injectFile } from "./fileAttach";
 import { runComboboxFillPass, runFillPass, type ValueProvider } from "./fillEngine";
 import { answerFirstOptionQuestions, isAutoFirstOptionQuestion } from "./firstOptionQuestions";
 import { runQaPass } from "./qaPass";
 import { fillEducationSection, fillWebsitesSection, fillWorkExperienceSection, type WebsiteEntry } from "./repeatableSections";
 import { runRequiredFieldFallback } from "./requiredFields";
-import { fillSkillsQuestion } from "./skillsQuestion";
+import { fillSkillsQuestion, isSkillsField } from "./skillsQuestion";
 import { type ChecklistItem, setChecklist, setKeywords, setResume, showProgress, showStatus } from "./statusUi";
 import { buildValueProvider } from "./valueProvider";
 
@@ -189,26 +189,36 @@ export async function runApplicationFormFill(): Promise<{ didSomething: boolean 
 
   const result = runFillPass(getValue);
   const comboboxResult = await runComboboxFillPass(getValue);
-  const conflictOfInterestAnswered = answerConflictOfInterestQuestions();
+  // Standard screening questions (work auth, sponsorship, over-18, previously
+  // interviewed/employed, background-check consent, conflict-of-interest) -
+  // filled from their defaults in whichever form they appear (radio OR the
+  // "Select One" dropdowns of the Application Questions step). Runs after the
+  // concept pass so a saved answer always wins.
+  const screeningAnswered = await answerScreeningQuestions();
 
-  // Excludes a "how did you hear about us"-style field from the free-text
-  // pass even if answerFirstOptionQuestions() failed to click through it -
-  // typing free text into what's actually a category picker is wrong
-  // regardless of whether the click-through succeeded, so worst case this
-  // field is just left blank rather than getting the wrong kind of answer.
-  const remainingForQa = result.unmatchedTextFields.filter(
-    (field) =>
-      !isAutoFirstOptionQuestion(field.labelText) &&
-      !fillSkillsQuestion(field, autofillResponse.data.resumeSkills, autofillResponse.data.jdKeywords),
-  );
-  const skillsAnswered = result.unmatchedTextFields.length - remainingForQa.length;
+  // Fill any "Skills" chip fields (multi-select typeahead - each skill typed
+  // and picked from the dropdown), then exclude them from the free-text QA
+  // pass. Also excludes a "how did you hear about us"-style field even if the
+  // earlier click-through failed, so free text never lands in a category picker.
+  let skillsAnswered = 0;
+  const remainingForQa: typeof result.unmatchedTextFields = [];
+  for (const field of result.unmatchedTextFields) {
+    if (isAutoFirstOptionQuestion(field.labelText)) continue;
+    if (isSkillsField(field.labelText)) {
+      if (await fillSkillsQuestion(field, autofillResponse.data.resumeSkills, autofillResponse.data.jdKeywords)) {
+        skillsAnswered++;
+        continue;
+      }
+    }
+    remainingForQa.push(field);
+  }
 
   const totalFilled = result.filled + comboboxResult.filled;
   const totalGuessed = result.guessed + comboboxResult.guessed;
   showProgress(
     `Filled ${totalFilled} field(s) confidently, ${totalGuessed} guessed (please review), ` +
       `${workExperienceFilled} work experience / ${educationFilled} education / ${websitesFilled} website entries added, ` +
-      `${conflictOfInterestAnswered} screening question(s) auto-answered "No" (please review), ` +
+      `${screeningAnswered} screening question(s) auto-answered (please review), ` +
       `${skillsAnswered} skills question(s) filled from the job description's keywords (please review), ` +
       `checking ${remainingForQa.length} unmapped field(s) for saved/AI answers...`,
     55,
@@ -239,7 +249,7 @@ export async function runApplicationFormFill(): Promise<{ didSomething: boolean 
   add("Résumé / CV attached", fileAttachStatus.includes("Attached"));
   add("Cover letter attached", coverLetterAttachStatus.includes("Attached"));
   add(`Questions answered (${attempted})`, attempted > 0);
-  add(`Screening "No" answers (${conflictOfInterestAnswered})`, conflictOfInterestAnswered > 0);
+  add(`Screening questions (${screeningAnswered})`, screeningAnswered > 0);
   add(`"How did you hear" answered`, firstOptionAnswered > 0);
   add(`Required fields AI-answered (${requiredFilled})`, requiredFilled > 0);
   setChecklist(items);
@@ -259,7 +269,7 @@ export async function runApplicationFormFill(): Promise<{ didSomething: boolean 
       educationFilled +
       websitesFilled +
       comboboxResult.filled +
-      conflictOfInterestAnswered +
+      screeningAnswered +
       skillsAnswered +
       attempted +
       requiredFilled +

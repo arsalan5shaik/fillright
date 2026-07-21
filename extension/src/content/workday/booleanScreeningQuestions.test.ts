@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { answerConflictOfInterestQuestions } from "./booleanScreeningQuestions";
+import { answerConflictOfInterestQuestions, answerScreeningQuestions } from "./booleanScreeningQuestions";
 
 function markVisible(): void {
   for (const el of document.querySelectorAll("input")) {
@@ -102,6 +102,66 @@ describe("answerConflictOfInterestQuestions", () => {
     markVisible();
 
     const answered = answerConflictOfInterestQuestions();
+
+    expect(answered).toBe(0);
+  });
+});
+
+describe("answerScreeningQuestions", () => {
+  it("answers standard screening radios with their defaults (Yes for work auth, No for sponsorship)", async () => {
+    document.body.innerHTML = `
+      <fieldset>
+        <legend>Are you legally authorized to work in the US for any employer?</legend>
+        <label for="auth-y"><input id="auth-y" type="radio" name="auth" /> Yes</label>
+        <label for="auth-n"><input id="auth-n" type="radio" name="auth" /> No</label>
+      </fieldset>
+      <fieldset>
+        <legend>Will you need sponsorship in the future to work in the US?</legend>
+        <label for="spon-y"><input id="spon-y" type="radio" name="spon" /> Yes</label>
+        <label for="spon-n"><input id="spon-n" type="radio" name="spon" /> No</label>
+      </fieldset>
+      <fieldset>
+        <legend>Are you over the age of 18?</legend>
+        <label for="age-y"><input id="age-y" type="radio" name="age" /> Yes</label>
+        <label for="age-n"><input id="age-n" type="radio" name="age" /> No</label>
+      </fieldset>
+    `;
+    markVisible();
+
+    const answered = await answerScreeningQuestions();
+
+    expect(answered).toBe(3);
+    expect((document.getElementById("auth-y") as HTMLInputElement).checked).toBe(true);
+    expect((document.getElementById("spon-n") as HTMLInputElement).checked).toBe(true);
+    expect((document.getElementById("age-y") as HTMLInputElement).checked).toBe(true);
+  });
+
+  it("answers 'Have you worked with us before?' as No", async () => {
+    document.body.innerHTML = `
+      <fieldset>
+        <legend>Have you worked with us before?</legend>
+        <label for="w-y"><input id="w-y" type="radio" name="worked" /> Yes</label>
+        <label for="w-n"><input id="w-n" type="radio" name="worked" /> No</label>
+      </fieldset>
+    `;
+    markVisible();
+
+    await answerScreeningQuestions();
+
+    expect((document.getElementById("w-n") as HTMLInputElement).checked).toBe(true);
+  });
+
+  it("leaves an unknown question untouched", async () => {
+    document.body.innerHTML = `
+      <fieldset>
+        <legend>What is your favorite programming language?</legend>
+        <label for="u-y"><input id="u-y" type="radio" name="unknown" /> Yes</label>
+        <label for="u-n"><input id="u-n" type="radio" name="unknown" /> No</label>
+      </fieldset>
+    `;
+    markVisible();
+
+    const answered = await answerScreeningQuestions();
 
     expect(answered).toBe(0);
   });

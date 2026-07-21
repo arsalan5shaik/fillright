@@ -215,6 +215,27 @@ export async function fillTypeaheadCombobox(input: HTMLInputElement, value: stri
   return false;
 }
 
+/** Adds ONE value to a multi-select typeahead (Workday's "Type to Add Skills"
+ * chip input): types the value, waits for the option list, clicks the matching
+ * option so it becomes a chip, and reports whether it committed (the input
+ * clears). Only clicks a genuine match - it won't add a wrong skill by grabbing
+ * the first unrelated option, so a skill Workday doesn't offer is simply
+ * skipped. Call once per skill (type -> select -> repeat), which is exactly how
+ * these chip inputs require each entry to be added. */
+export async function addTypeaheadValue(input: HTMLInputElement, value: string): Promise<boolean> {
+  if (!isVisible(input)) return false;
+  simulateTyping(input, value);
+  const option = await waitFor(() => findVisibleOptionMatching([value]), 1500);
+  if (!option) {
+    typeIntoFilterInput(input, ""); // clear the half-typed text before the next skill
+    return false;
+  }
+  option.click();
+  const committed = await waitFor(() => (input.value.trim() === "" ? true : null), 600);
+  if (!committed) typeIntoFilterInput(input, "");
+  return committed !== null;
+}
+
 /** State/region convenience wrapper: expands "TX" ↔ "Texas" and types the
  * value itself as the filter term (the exact option is what we want to pick
  * and also narrows correctly). */

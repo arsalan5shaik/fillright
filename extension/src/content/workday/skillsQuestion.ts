@@ -1,9 +1,14 @@
 import { markField } from "./confidenceUi";
 import type { UnmatchedTextField } from "./fillEngine";
 import { setFieldValue } from "./formUtils";
+import { addTypeaheadValue } from "./workdayCombobox";
 
 const SKILLS_LABEL_PATTERN = /\bskills?\b/i;
 const MAX_KEYWORDS = 8;
+
+export function isSkillsField(labelText: string): boolean {
+  return SKILLS_LABEL_PATTERN.test(labelText);
+}
 
 function dispatchEnterKey(el: HTMLElement): void {
   const eventInit: KeyboardEventInit = { key: "Enter", code: "Enter", bubbles: true };
@@ -33,12 +38,32 @@ function orderSkillsByJdRelevance(resumeSkills: string[], jdKeywords: string[]):
  * skills by relevance. Types each one and commits it with Enter (the
  * standard tag/chip-input pattern); if the field doesn't clear after Enter
  * (not actually a chip input), falls back to one comma-separated value. */
-export function fillSkillsQuestion(field: UnmatchedTextField, resumeSkills: string[], jdKeywords: string[]): boolean {
+export async function fillSkillsQuestion(
+  field: UnmatchedTextField,
+  resumeSkills: string[],
+  jdKeywords: string[],
+): Promise<boolean> {
   if (!SKILLS_LABEL_PATTERN.test(field.labelText) || resumeSkills.length === 0) return false;
 
   const { element } = field;
   const selected = orderSkillsByJdRelevance(resumeSkills, jdKeywords).slice(0, MAX_KEYWORDS);
 
+  // Workday's "Type to Add Skills" is a multi-select typeahead <input>: each
+  // skill must be typed, then picked from the dropdown so it becomes a chip,
+  // before the next one (confirmed live). Add them one at a time via the option
+  // list. (A <textarea> is never this widget, so skip straight to the fallback.)
+  if (element instanceof HTMLInputElement) {
+    let addedViaTypeahead = 0;
+    for (const keyword of selected) {
+      if (await addTypeaheadValue(element, keyword)) addedViaTypeahead++;
+    }
+    if (addedViaTypeahead > 0) {
+      markField(element, "low");
+      return true;
+    }
+  }
+
+  // Fallback for a plain chip input (commits each on Enter, no option list)...
   let committedAny = false;
   for (const keyword of selected) {
     setFieldValue(element, keyword);
@@ -50,6 +75,7 @@ export function fillSkillsQuestion(field: UnmatchedTextField, resumeSkills: stri
     }
   }
 
+  // ...and finally a plain text field: one comma-separated value.
   if (!committedAny) {
     setFieldValue(element, selected.join(", "));
   }

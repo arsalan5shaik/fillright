@@ -1,5 +1,6 @@
 import { markField } from "./confidenceUi";
 import { getAssociatedLabelText, isVisible } from "./formUtils";
+import { isComboboxEmpty, isWorkdayComboboxTrigger, selectComboboxOption } from "./workdayCombobox";
 
 /** Common Workday screening questions that are near-universally "No" for a
  * given applicant, regardless of which company is asking - conflict-of-
@@ -16,6 +17,39 @@ const AUTO_NO_PATTERNS: RegExp[] = [
 
 function isAutoNoQuestion(text: string): boolean {
   return AUTO_NO_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+/** Standard application screening questions with a safe, near-universal default
+ * answer, applied to whichever widget presents them (a Yes/No radio group OR a
+ * "Select One" listbox combobox) when FillRight has no saved answer for them.
+ * Saved answers are filled earlier (leaving the field non-empty), so those are
+ * skipped here. The user can override any of these on the website. Order
+ * matters - first matching pattern wins. */
+const SCREENING_DEFAULTS: { pattern: RegExp; answer: "Yes" | "No" }[] = [
+  { pattern: /legally authorized to work|authorized to work in|work authorization|eligible to work/i, answer: "Yes" },
+  {
+    pattern: /require (visa |work )?sponsorship|need sponsorship|sponsorship (now|in the future|to work)|will you (now or in the future )?(require|need)/i,
+    answer: "No",
+  },
+  { pattern: /over the age of 18|at least 18 years|are you 18/i, answer: "Yes" },
+  {
+    pattern: /interviewed with (us|our|this|the) (company|organization|team|firm)|previously interviewed/i,
+    answer: "No",
+  },
+  {
+    pattern: /worked (with|for|at) (us|this|our)[^?]{0,25}before|worked (here|with us) before|previously (worked|been employed)/i,
+    answer: "No",
+  },
+  // Prior-employment / relatives / government / conflict-of-interest (the No set above).
+  ...AUTO_NO_PATTERNS.map((pattern) => ({ pattern, answer: "No" as const })),
+  {
+    pattern: /(willing|able|agree|consent) to[^?]{0,30}background check|background check[^?]{0,20}(required|consent|willing)/i,
+    answer: "Yes",
+  },
+];
+
+function screeningDefaultFor(text: string): "Yes" | "No" | null {
+  return SCREENING_DEFAULTS.find((d) => d.pattern.test(text))?.answer ?? null;
 }
 
 function groupRadiosByName(): HTMLInputElement[][] {
@@ -85,6 +119,54 @@ export function answerConflictOfInterestQuestions(): number {
     noOption.click();
     markField(noOption, "low");
     answered++;
+  }
+
+  return answered;
+}
+
+function findOptionByLabel(group: HTMLInputElement[], answer: "Yes" | "No"): HTMLInputElement | null {
+  const want = new RegExp(`^${answer}$`, "i");
+  return group.find((input) => want.test(getAssociatedLabelText(input)?.trim() ?? "")) ?? null;
+}
+
+/** Answers the standard application-screening questions (work authorization,
+ * sponsorship, over-18, previously interviewed/employed, background-check
+ * consent, conflict-of-interest) with their safe defaults - whether the site
+ * renders each one as a Yes/No radio group OR a "Select One" listbox combobox.
+ * This is what makes the "Application Questions" step (all dropdowns) actually
+ * get filled. Never overrides a field the user (or an earlier saved-answer
+ * pass) already set; everything is marked "please review". */
+export async function answerScreeningQuestions(): Promise<number> {
+  let answered = 0;
+
+  // Yes/No radio groups.
+  for (const group of groupRadiosByName()) {
+    if (group.length === 0 || group.some((input) => input.checked)) continue;
+    const questionText = getRadioGroupQuestionText(group[0]);
+    if (!questionText) continue;
+    const answer = screeningDefaultFor(questionText);
+    if (!answer) continue;
+    const option = findOptionByLabel(group, answer);
+    if (!option) continue;
+    option.click();
+    markField(option, "low");
+    answered++;
+  }
+
+  // "Select One" listbox comboboxes (the Application Questions step is entirely
+  // these). Only touches still-empty ones, so a saved answer filled earlier is
+  // left alone.
+  const comboboxes = Array.from(document.querySelectorAll<HTMLElement>("button")).filter(
+    (b): b is HTMLButtonElement => isWorkdayComboboxTrigger(b) && isVisible(b) && isComboboxEmpty(b),
+  );
+  for (const button of comboboxes) {
+    const label = getAssociatedLabelText(button) ?? button.getAttribute("aria-label") ?? "";
+    const answer = screeningDefaultFor(label);
+    if (!answer) continue;
+    if (await selectComboboxOption(button, [answer], answer)) {
+      markField(button, "low");
+      answered++;
+    }
   }
 
   return answered;

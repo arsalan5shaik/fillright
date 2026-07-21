@@ -80,6 +80,46 @@ def _keyword_terms(keyword: str) -> list[str]:
     return [t for t in terms if t]
 
 
+# Words too generic to be evidence of domain fabrication on their own - a
+# tailored bullet using "software" or "development" isn't claiming a domain the
+# candidate lacks, so these are ignored when checking a multi-word JD keyword's
+# individual words (unlike "embedded" or "avionics", which are).
+_GENERIC_WORDS = {
+    "software", "development", "systems", "system", "operating", "engineering",
+    "design", "designing", "testing", "programming", "application", "applications",
+    "management", "services", "service", "cloud", "computing", "architecture",
+    "distributed", "framework", "frameworks", "platform", "platforms", "tools",
+    "technology", "technologies", "solution", "solutions", "experience", "knowledge",
+    "modern", "related", "based", "using", "various", "field",
+}
+
+
+def _distinctive_words(keyword: str) -> list[str]:
+    """The domain-specific words of a multi-word JD keyword (e.g. 'embedded' from
+    'embedded systems', 'real-time' from 'real-time operating systems') - so
+    injecting the domain adjective alone still counts as fabrication, not just
+    the exact phrase."""
+    return [w for w in re.split(r"\s+", keyword.strip().lower()) if len(w) >= 5 and w not in _GENERIC_WORDS]
+
+
+def _lacking_keywords(source: ParsedResume, jd_analysis: JDAnalysis) -> list[str]:
+    """JD keywords the candidate's résumé gives NO basis for - passed to the
+    prompt as an explicit 'do not introduce these' list so the model doesn't
+    reframe software/data work as embedded/avionics/real-time to match the JD."""
+    blob = _source_blob(source)
+    lacking: list[str] = []
+    seen: set[str] = set()
+    for kw in jd_analysis.keywords:
+        term = kw.term.strip()
+        tl = term.lower()
+        if not tl or tl in seen or tl in _GENERIC_SKILL_TERMS:
+            continue
+        if not any(len(t) >= 2 and t in blob for t in _keyword_terms(term)):
+            lacking.append(term)
+            seen.add(tl)
+    return lacking
+
+
 def find_fabricated_skills(tailored: TailoredResume, source: ParsedResume, jd_analysis: JDAnalysis) -> list[str]:
     """JD keywords that show up in the tailored bullets but nowhere in the source
     résumé - i.e. a technology the candidate doesn't actually have, injected to
@@ -92,7 +132,10 @@ def find_fabricated_skills(tailored: TailoredResume, source: ParsedResume, jd_an
     for keyword in {k.term for k in jd_analysis.keywords}:
         if keyword.strip().lower() in _GENERIC_SKILL_TERMS:
             continue
-        for term in _keyword_terms(keyword):
+        # Check the full keyword, its tech-symbol core, AND its distinctive
+        # domain words - so "embedded" leaking in from "embedded systems" (even
+        # when the exact phrase never appears) is still caught as fabrication.
+        for term in _keyword_terms(keyword) + _distinctive_words(keyword):
             if len(term) >= 2 and term in tailored_text and term not in blob:
                 fabricated.append(keyword.strip())
                 break
@@ -109,32 +152,71 @@ def _clean_bullet(text: str) -> str:
     return _META_PAREN.sub("", text).strip()
 
 
+def _overlap_skills(source: ParsedResume, jd_analysis: JDAnalysis) -> list[str]:
+    """The candidate's OWN skills (from their résumé) that the JD also asks for -
+    i.e. legitimate, non-fabricated terms to surface prominently in the reworded
+    bullets. Matches a résumé skill to a JD keyword when either contains the
+    other (so 'C++' matches 'C++ programming', 'AWS' matches 'AWS services')."""
+    blob = _source_blob(source)
+    overlap: list[str] = []
+    seen: set[str] = set()
+    for kw in jd_analysis.keywords:
+        term = kw.term.strip()
+        tl = term.lower()
+        if not tl or tl in seen:
+            continue
+        # Present in the candidate's real résumé text (skills/bullets/titles)?
+        for sub in _keyword_terms(term):
+            if len(sub) >= 2 and sub in blob:
+                overlap.append(term)
+                seen.add(tl)
+                break
+    return overlap
+
+
 def _build_prompt(source: ParsedResume, jd_analysis: JDAnalysis) -> str:
     required_keywords = [k.term for k in jd_analysis.keywords if k.required]
     nice_to_have = [k.term for k in jd_analysis.keywords if not k.required]
+    overlap = _overlap_skills(source, jd_analysis)
+    lacking = _lacking_keywords(source, jd_analysis)
     return (
-        "Tailor this résumé for the job description analyzed below. This is a "
-        "substantive rewrite of the work-experience bullet points - genuinely "
-        "reword them so each prior role clearly speaks to THIS job's "
-        "responsibilities, using the JD's own terminology ONLY for skills the "
-        "candidate genuinely has. Make it impressive but believable for the "
-        "candidate's ACTUAL role, seniority, and company.\n\n"
-        "Rules for staying honest and concise:\n"
-        "- Keep the SAME number of bullets per role (never merge two into one or "
-        "drop any), each about the original length, so it fits the same page "
-        "count. Do NOT add a professional summary or new section (summary null).\n"
+        "Tailor this résumé for the job description analyzed below by REWRITING "
+        "the work-experience bullet points. Do not return the bullets unchanged - "
+        "genuinely reword each one so the prior role clearly speaks to THIS job's "
+        "responsibilities and the recruiter immediately sees the fit, while "
+        "staying truthful about what the candidate actually did.\n\n"
+        "How to weave in keywords (the important part):\n"
+        "- Naturally work the JD's own terminology and the skills listed below "
+        "into the bullets WHERE IT HONESTLY FITS the work already described. "
+        "Reframe existing accomplishments in the language this job uses.\n"
+        "- PRIORITIZE the candidate's own skills that this JD also asks for "
+        "(listed under 'Skills to emphasize' below) - surface these prominently "
+        "since they're both real AND relevant.\n"
+        "- Make it read like a strong human-written résumé: keywords woven into "
+        "real sentences, never a keyword list or an obvious stuffing. If a "
+        "keyword doesn't plausibly fit the actual work, leave it out.\n\n"
+        "Honesty and format rules:\n"
+        "- Only edit the bullet text. Keep the SAME number of bullets per role "
+        "(never merge or drop any), each about the original length, so it fits "
+        "the same one page. Do NOT add a summary or new section (summary null).\n"
         "- Preserve real metrics; never inflate or invent a number.\n"
         "- Do NOT copy sentences from the job description verbatim.\n"
-        "- CRITICAL: never introduce a technology, tool, framework, language, or "
-        "platform the candidate's source résumé does not mention. If the JD "
-        "wants a skill the candidate lacks, do NOT claim it - keep their real "
-        "technologies (e.g. do not turn a Java/Spring engineer's work into "
-        "'C#/.NET'). Reword what's there; add nothing that isn't.\n"
+        "- CRITICAL: never introduce a hard technology, tool, framework, "
+        "language, or DOMAIN the candidate's résumé gives no basis for. Do not "
+        "reframe software or data work as a domain they never worked in - never "
+        "call it 'embedded', 'real-time', 'avionics', 'firmware', 'hardware', "
+        "etc., and never turn a Java/Spring engineer's work into 'C#/.NET'. See "
+        "the explicit 'Do NOT introduce' list below. Reframe what's genuinely "
+        "there using the overlapping skills; invent nothing.\n"
         "- Each bullet is FINAL résumé text: no parenthetical notes or "
         "commentary about your edits.\n\n"
         "HARD CONSTRAINT: every company name, job title, and start/end date must "
         "match the source résumé verbatim. Never invent, merge, or alter "
         "employers, titles, or dates.\n\n"
+        f"Skills to emphasize (candidate's own skills this JD wants - lead with these): "
+        f"{', '.join(overlap) or 'none directly overlap; reframe existing work in the JD''s language without claiming new skills'}\n"
+        f"Do NOT introduce or imply these (résumé gives no basis - the candidate has NOT done these): "
+        f"{', '.join(lacking) or 'none'}\n"
         f"Required JD keywords: {', '.join(required_keywords) or 'none specified'}\n"
         f"Nice-to-have JD keywords: {', '.join(nice_to_have) or 'none specified'}\n"
         f"Seniority: {jd_analysis.seniority or 'not specified'}\n\n"

@@ -18,6 +18,18 @@ values
   ('Are you willing to relocate?',
     'relocation', false, 'boolean', null),
 
+  ('Are you over the age of 18?',
+    'age_verification', false, 'boolean', null),
+
+  ('Are you currently employed?',
+    'currently_employed', false, 'boolean', null),
+
+  ('Have you ever interviewed with our company before?',
+    'previously_interviewed', false, 'boolean', null),
+
+  ('Are you willing to submit to a background check if hired?',
+    'background_check_consent', false, 'boolean', null),
+
   ('Are you open to remote, hybrid, or onsite work?',
     'remote_pref', false, 'select',
     '["Remote", "Hybrid", "Onsite", "No preference"]'::jsonb),
