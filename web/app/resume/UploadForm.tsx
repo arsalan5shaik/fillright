@@ -58,6 +58,10 @@ export default function UploadForm() {
           <input ref={fileInputRef} type="file" accept=".pdf,.docx" />
         </label>
       </div>
+      <p className="card-muted" style={{ marginTop: 2, marginBottom: 12 }}>
+        Tailoring edits only your experience bullets and keeps your exact layout. Upload a <strong>.docx</strong> for
+        pixel-perfect fidelity; a .pdf is preserved too (bullets re-typeset in a matching font).
+      </p>
       <button type="submit" className="btn-primary" disabled={loading}>
         {loading ? "Uploading..." : "Upload & parse"}
       </button>

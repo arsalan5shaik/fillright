@@ -24,6 +24,22 @@ def upload_object(access_token: str, bucket: str, path: str, content: bytes, con
         raise RuntimeError(f"Storage upload failed ({resp.status_code}): {resp.text}")
 
 
+def download_object(access_token: str, bucket: str, path: str) -> bytes:
+    """Fetches a private-bucket object's bytes (the user's own original résumé
+    file), used by tailoring to edit it in place."""
+    settings = get_settings()
+    resp = httpx.get(
+        f"{settings.supabase_url}/storage/v1/object/{bucket}/{path}",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "apikey": settings.supabase_service_role_key,
+        },
+        timeout=30,
+    )
+    resp.raise_for_status()
+    return resp.content
+
+
 def create_signed_url(access_token: str, bucket: str, path: str, expires_in: int = 3600) -> str:
     settings = get_settings()
     resp = httpx.post(

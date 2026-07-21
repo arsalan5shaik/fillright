@@ -316,10 +316,16 @@ function slugifyFilename(name: string): string {
  * real application), and downloads the PDF bytes. Returns null rather than
  * throwing if there's nothing to attach yet - the caller treats that as "no
  * tailored resume for this session", not an error. */
+const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
 export async function getTailoredResumeFile(accessToken: string): Promise<TailoredResumeFile | null> {
   const path = await getMostRecentTailoredResumePath(accessToken);
   if (!path) return null;
 
+  // The tailored file keeps the original's format (in-place edit), so it may be
+  // a .docx, not a .pdf - use the stored path's extension for both the attached
+  // filename and the MIME fallback so Workday recognizes the file type.
+  const ext = path.toLowerCase().endsWith(".docx") ? "docx" : "pdf";
   const [signedUrl, contact] = await Promise.all([
     getSignedUrl(accessToken, "resumes", path),
     getDefaultResumeContact(accessToken),
@@ -328,8 +334,9 @@ export async function getTailoredResumeFile(accessToken: string): Promise<Tailor
   if (!pdfRes.ok) throw new Error(`resume download failed: ${pdfRes.status}`);
 
   const blob = await pdfRes.blob();
-  const filename = contact?.full_name ? `${slugifyFilename(contact.full_name)}_resume.pdf` : "resume.pdf";
-  return { base64: arrayBufferToBase64(await blob.arrayBuffer()), filename, mimeType: blob.type || "application/pdf" };
+  const base = contact?.full_name ? `${slugifyFilename(contact.full_name)}_resume` : "resume";
+  const mimeType = blob.type || (ext === "docx" ? DOCX_MIME : "application/pdf");
+  return { base64: arrayBufferToBase64(await blob.arrayBuffer()), filename: `${base}.${ext}`, mimeType };
 }
 
 /** A fresh signed URL to the most recent tailored résumé PDF, for opening in

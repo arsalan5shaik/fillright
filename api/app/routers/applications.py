@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.auth import CurrentUser, get_current_user
 from app.db.postgrest import user_scoped_client
-from app.db.storage import create_signed_url, upload_object
+from app.db.storage import create_signed_url, download_object, upload_object
 from app.schemas.applications import (
     AnalyzeJDRequest,
     ApplicationOut,
@@ -17,9 +17,40 @@ from app.schemas.resume import ParsedResume
 from app.services.cover_letter import generate_cover_letter
 from app.services.llm.client import call_structured
 from app.services.pdf_render import render_cover_letter_pdf, render_resume_pdf
+from app.services.resume_format import tailor_in_place
 from app.services.resume_tailor import tailor_resume
 
 router = APIRouter(prefix="/applications", tags=["applications"])
+
+_TAILORED_CONTENT_TYPE = {
+    "pdf": "application/pdf",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
+
+
+def _render_tailored_file(client, resume_profile_id, access_token, source, tailored):
+    """Produce the tailored résumé as bytes + file extension. Preferred path:
+    edit the user's ORIGINAL uploaded file (PDF/DOCX) in place so only the
+    bullets change and their exact formatting is preserved. Falls back to the
+    standard rendered PDF template when there's no stored original or in-place
+    editing can't be done cleanly."""
+    try:
+        resp = client.get(
+            "/resume_profiles",
+            params={"select": "raw_file_url,raw_file_type", "id": f"eq.{resume_profile_id}"},
+        )
+        resp.raise_for_status()
+        rows = resp.json()
+        raw_url = rows[0].get("raw_file_url") if rows else None
+        raw_type = rows[0].get("raw_file_type") if rows else None
+        if raw_url and raw_type:
+            original = download_object(access_token, "resumes", raw_url)
+            edited = tailor_in_place(original, raw_type, source, tailored)
+            if edited:
+                return edited, raw_type
+    except Exception:
+        pass
+    return render_resume_pdf(tailored), "pdf"
 
 _SELECT_FIELDS = "id,company,requisition_id,job_title,job_url,jd_analysis_json"
 
@@ -175,10 +206,13 @@ def tailor_resume_endpoint(
             job_title=app_row.get("job_title"),
             user_id=user.id,
         )
-        pdf_bytes = render_resume_pdf(tailored)
+        # Prefer editing the user's own file in place (keeps their exact format);
+        # fall back to the rendered template. The stored file's extension follows
+        # whichever path was taken.
+        file_bytes, ext = _render_tailored_file(client, resume_profile_id, user.access_token, source, tailored)
 
-        storage_path = f"{user.id}/{application_id}.pdf"
-        upload_object(user.access_token, "resumes", storage_path, pdf_bytes, "application/pdf")
+        storage_path = f"{user.id}/{application_id}.{ext}"
+        upload_object(user.access_token, "resumes", storage_path, file_bytes, _TAILORED_CONTENT_TYPE[ext])
         download_url = create_signed_url(user.access_token, "resumes", storage_path)
 
         update_resp = client.patch(
